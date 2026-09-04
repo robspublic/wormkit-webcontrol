@@ -4,13 +4,11 @@ import { useOutletContext } from "react-router-dom";
 import {
   api,
   openControlSocket,
+  POLL_MS,
   type ControlAction,
   type GameSnapshot,
 } from "../api";
 import type { AppContext } from "../App";
-
-// How often to refresh the game snapshot (whose turn it is).
-const POLL_MS = 1000;
 
 export default function ControlPage() {
   const { me, refreshMe } = useOutletContext<AppContext>();
@@ -89,7 +87,7 @@ export default function ControlPage() {
     <div className="control">
       <div className={`turn-banner ${isMyTurn ? "active" : "waiting"}`}>
         {!roundActive
-          ? "Waiting for a game to start…"
+          ? "Waiting for game connection"
           : turnTeam === null
             ? "Between turns…"
             : myTeam === null

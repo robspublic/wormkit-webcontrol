@@ -60,6 +60,10 @@ body {
   background: #3a1d1d;
   color: #ffb4b4;
 }
+.banner.waiting-banner {
+  background: var(--panel);
+  color: var(--muted);
+}
 
 /* ---- Control page ---- */
 .turn-banner {

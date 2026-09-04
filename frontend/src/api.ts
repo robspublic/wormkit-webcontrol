@@ -60,6 +60,15 @@ export interface GameSnapshot {
 // team number (as string, since JSON object keys are strings) -> email
 export type Mappings = Record<string, string>;
 
+// How often the Play/Monitor pages poll game state (ms). Fast enough to feel
+// live for a game controller.
+export const POLL_MS = 250;
+
+// WA stores positions as large fixed-point integers; show a compact value.
+export function fmtPos(raw: number): number {
+  return Math.trunc(raw / 100000);
+}
+
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = "";

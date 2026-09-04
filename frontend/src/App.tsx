@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 
 import { api, type Me } from "./api";
+import { useWakeLock } from "./useWakeLock";
 
 export interface AppContext {
   me: Me | null;
@@ -11,6 +12,9 @@ export interface AppContext {
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Keep the screen awake on every page (it's a game controller).
+  useWakeLock();
 
   const refreshMe = useCallback(() => {
     api

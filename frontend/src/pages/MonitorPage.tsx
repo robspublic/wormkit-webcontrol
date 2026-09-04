@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 
-import { api, type GameSnapshot, type Mappings } from "../api";
-
-const POLL_MS = 1000;
+import { api, fmtPos, POLL_MS, type GameSnapshot, type Mappings } from "../api";
 
 export default function MonitorPage() {
   const [snap, setSnap] = useState<GameSnapshot | null>(null);
   const [mappings, setMappings] = useState<Mappings>({});
+  const [offline, setOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -14,8 +13,12 @@ export default function MonitorPage() {
     const tick = () => {
       api
         .monitor()
-        .then((s) => active && setSnap(s))
-        .catch((e) => active && setError(String(e)));
+        .then((s) => {
+          if (!active) return;
+          setSnap(s);
+          setOffline(false); // clear the "waiting" banner once data flows
+        })
+        .catch(() => active && setOffline(true));
       api
         .listMappings()
         .then((m) => active && setMappings(m))
@@ -56,6 +59,7 @@ export default function MonitorPage() {
         </button>
       </div>
 
+      {offline && <div className="banner waiting-banner">Waiting for game connection</div>}
       {error && <div className="banner error">{error}</div>}
 
       <dl className="game-stats">
@@ -109,7 +113,7 @@ export default function MonitorPage() {
                     <td>{w.worm}</td>
                     <td>{w.active ? "●" : ""}</td>
                     <td>
-                      {w.pos_x}, {w.pos_y}
+                      {fmtPos(w.pos_x)}, {fmtPos(w.pos_y)}
                     </td>
                     <td>{w.weapon}</td>
                     <td>{w.facing > 0 ? "▶" : w.facing < 0 ? "◀" : "—"}</td>
