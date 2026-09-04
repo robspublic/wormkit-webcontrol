@@ -62,9 +62,25 @@ Protocol::GameSnapshot buildSnapshot() {
         ts.is_turn_holder = (activeTeam >= 0 && team->team_number_dword38 == activeTeam);
         ts.is_local = team->isOwnedByMe();
 
+        // Diagnostic (temporary): how many direct children the team task has,
+        // and the classtype of the first, to confirm worm enumeration. Rate-
+        // limited since buildSnapshot runs every frame.
+        static int diagCounter = 0;
+        if ((diagCounter++ % 200) == 0) {
+            Log::info("team " + std::to_string(team->team_number_dword38) +
+                      " children=" + std::to_string(team->children.count) +
+                      " firstType=" + std::to_string(
+                          team->children.count > 0 && team->children.data
+                              ? (int)team->children.data[0]->classtype : -1));
+        }
+
+        // A team's direct children are its worms. The reference casts each
+        // child straight to CTaskWorm without a classtype filter, so we do the
+        // same (a stale/wrong Worm classtype value would otherwise drop them
+        // all -> "no worms").
         for (int i = 0; i < team->children.count; ++i) {
             CTask* child = team->children.data ? team->children.data[i] : nullptr;
-            if (!child || child->classtype != Constants::ClassType_Worm) continue;
+            if (!child) continue;
             auto* worm = (CTaskWorm*)child;
 
             Protocol::WormSnapshot ws;
