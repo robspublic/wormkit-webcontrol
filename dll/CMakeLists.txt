@@ -42,9 +42,14 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 #   git submodule add https://github.com/stevemk14ebr/PolyHook_2_0.git dll/lib/PolyHook_2_0
 #   git submodule update --init --recursive
 # ---------------------------------------------------------------------------
-# Build PolyHook as a static lib (not its test DLL) with the static CRT so it
-# links cleanly into our module and adds no runtime dependency.
-set(POLYHOOK_BUILD_DLL OFF CACHE BOOL "" FORCE)
+# Build PolyHook as a *library* rather than its unit-test executable, with the
+# static CRT so it links cleanly into our module.
+#
+# NOTE the option semantics: POLYHOOK_BUILD_DLL=ON means "build the library
+# target" (SHARED if POLYHOOK_BUILD_SHARED_LIB, else STATIC); OFF builds the
+# test executable, which cannot be linked into another target. So we want ON
+# here, with SHARED_LIB=OFF to get a static PolyHook_2.
+set(POLYHOOK_BUILD_DLL ON CACHE BOOL "" FORCE)
 set(POLYHOOK_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
 set(POLYHOOK_BUILD_STATIC_RUNTIME ON CACHE BOOL "" FORCE)
 add_subdirectory(lib/PolyHook_2_0)
