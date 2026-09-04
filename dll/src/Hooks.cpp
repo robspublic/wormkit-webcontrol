@@ -15,11 +15,17 @@ void Hooks::hook(std::string name, DWORD pTarget, DWORD* pDetour,
         throw std::runtime_error("Hook '" + name + "' has null target address (pattern scan failed?) at " +
                                  (line ? line : "?"));
     }
+    // PolyHook writes a 64-bit trampoline address. We must give it a real
+    // uint64_t, then narrow the result into the 32-bit `orig*` pointer. Passing
+    // a (uint64_t*)&DWORD here would write 8 bytes into 4, corrupting the
+    // adjacent global and leaving a bad "call original" pointer -> EIP=0 crash.
+    uint64_t trampoline = 0;
     auto detour = std::make_unique<PLH::x86Detour>(
-        (uint64_t)pTarget, (uint64_t)pDetour, (uint64_t*)ppOriginal);
+        (uint64_t)pTarget, (uint64_t)pDetour, &trampoline);
     if (!detour->hook()) {
         throw std::runtime_error("Failed to install hook '" + name + "' at " + (line ? line : "?"));
     }
+    *ppOriginal = (DWORD)trampoline;
     detours.push_back(std::move(detour));
     Log::info("hooked " + name);
 }
