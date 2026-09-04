@@ -80,6 +80,23 @@ scripts/run-dev.sh --frontend-port 3000 --backend-port 8080
 The Vite proxy target follows `--backend-port` automatically, so the two can't
 drift out of sync.
 
+## Running in production — `scripts/run-prod.sh`
+
+On the machine running WA, this builds the frontend and starts the backend on
+port 8000 serving both the API/WebSocket and the built SPA (single origin). It
+uses the **real** named-pipe IPC transport (mock off), so the backend talks to
+the wkWebControl DLL inside `WA.exe`.
+
+```
+scripts/run-prod.sh                 # build frontend, serve app on 0.0.0.0:8000
+scripts/run-prod.sh --port 8080     # (must match the nginx upstream)
+```
+
+nginx (`worms.operimentum.com`) proxies to `http://<this-host>:8000` and injects
+the `X-Auth-Email` header from the oauth2 layer, which the backend trusts as the
+user's identity. The single origin means `/`, `/api`, and `/ws` all resolve
+through the one proxied upstream.
+
 ## Building and deploying the DLL
 
 The Windows CI (`.github/workflows/build-dll.yml`) builds `wkWebControl.dll` on

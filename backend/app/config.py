@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # SQLite file for the team<->email mapping.
     db_path: str = "wkwebcontrol.db"
 
+    # Path to the built frontend (frontend/dist). When present, the backend
+    # serves the SPA at / so nginx can proxy a single origin. Relative paths
+    # resolve against the backend working directory.
+    frontend_dist: str = "../frontend/dist"
+
     # Header set by the trusted oauth-proxy / nginx layer carrying the
     # authenticated user's email. Any client-supplied copy is ignored: the
     # backend must sit behind the proxy so this header cannot be spoofed.

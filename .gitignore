@@ -43,6 +43,9 @@ cmake-build-*/
 # ---- Downloaded CI build artifacts (produced by GitHub Actions) ----
 /gitHubArtifacts/
 
+# ---- Scratch/working copies (e.g. fetched nginx config for editing) ----
+/tmp/
+
 # ---- General ----
 .DS_Store
 *.log

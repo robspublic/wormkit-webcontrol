@@ -147,3 +147,41 @@ async def control(ws: WebSocket) -> None:
             await ws.send_json({"ok": True, "action": action.value})
     except WebSocketDisconnect:
         return
+
+
+# --------------------------------------------------------------------------- #
+# Static frontend (single-origin production serving)
+#
+# When frontend/dist exists, serve it so nginx proxies one origin: /api and /ws
+# are handled above (registered first, so they win), and everything else falls
+# through to the SPA. In dev you normally run Vite separately and this mount is
+# simply absent (no dist build), which is fine.
+# --------------------------------------------------------------------------- #
+def _mount_frontend() -> None:
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    dist = Path(settings.frontend_dist)
+    if not dist.is_dir():
+        return
+
+    # Hashed build assets (JS/CSS) live under dist/assets.
+    assets = dist / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+    index = dist / "index.html"
+
+    # Catch-all for client-side routes (e.g. /admin): serve index.html so the
+    # SPA router can take over. Registered last, so API routes take precedence.
+    @app.get("/{full_path:path}")
+    def spa(full_path: str):  # noqa: ANN202 - FastAPI route
+        candidate = dist / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index)
+
+
+_mount_frontend()
