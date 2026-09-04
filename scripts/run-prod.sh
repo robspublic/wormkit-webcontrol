@@ -59,12 +59,33 @@ if [[ ! -x .venv/bin/uvicorn ]]; then
   .venv/bin/pip install --quiet -e ".[dev]"
 fi
 
-# ---- run ---------------------------------------------------------------------
-# Real named-pipe transport to the DLL (mock OFF). On non-Windows the transport
-# factory still falls back to the mock, so this is only fully live on the game
-# host; elsewhere it runs but can't reach the DLL.
-export WKWC_USE_MOCK_IPC="${WKWC_USE_MOCK_IPC:-0}"
+# ---- backend .env (gitignored; holds prod settings incl. admin allow-list) ---
+# Created on first run with a sensible default admin. Edit backend/.env to add
+# or change admins (WKWC_ADMIN_EMAILS is a comma-separated list). The backend
+# loads this file automatically (pydantic-settings env_file=.env).
+if [[ ! -f .env ]]; then
+  echo "Creating backend/.env template…"
+  cat > .env <<'EOF'
+# Production settings for the wkWebControl backend (gitignored).
+WKWC_USE_MOCK_IPC=0
+# Comma-separated admin emails. Fill this in before going live, e.g.
+# WKWC_ADMIN_EMAILS=you@example.com
+WKWC_ADMIN_EMAILS=
+EOF
+  echo "  -> edit backend/.env and set WKWC_ADMIN_EMAILS before going live."
+fi
 
-echo "Starting production app on http://${BIND}:${PORT} (WKWC_USE_MOCK_IPC=${WKWC_USE_MOCK_IPC})…"
+# Warn (don't fail) if no admin is configured yet.
+if ! grep -qE '^WKWC_ADMIN_EMAILS=.+' .env; then
+  echo "warning: WKWC_ADMIN_EMAILS is empty in backend/.env — every authenticated" >&2
+  echo "         user is treated as admin until you set it." >&2
+fi
+
+# ---- run ---------------------------------------------------------------------
+# Transport and admin settings come from backend/.env (created above). The
+# named-pipe transport (WKWC_USE_MOCK_IPC=0) is only fully live on the Windows
+# game host; on other platforms the factory falls back to the mock. An explicit
+# environment override still wins if you set WKWC_USE_MOCK_IPC before running.
+echo "Starting production app on http://${BIND}:${PORT} (settings from backend/.env)…"
 echo "nginx (worms.operimentum.com) should proxy to this host:${PORT}."
 exec .venv/bin/uvicorn app.main:app --host "${BIND}" --port "${PORT}"
