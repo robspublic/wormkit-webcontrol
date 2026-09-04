@@ -8,6 +8,7 @@ import {
   type ControlPhase,
 } from "../api";
 import { useGameState } from "../useGameState";
+import { useTurnVibration } from "../useTurnVibration";
 import type { AppContext } from "../App";
 
 export default function ControlPage() {
@@ -73,6 +74,9 @@ export default function ControlPage() {
 
   // It's my turn when I've claimed the team that currently holds the turn.
   const isMyTurn = myTeam !== null && turnTeam !== null && myTeam === turnTeam;
+
+  // Buzz the phone when it becomes my turn (no-op on unsupported browsers).
+  useTurnVibration(isMyTurn);
 
   // If the turn is lost (or the round ends) while holding a button, release it
   // so a worm doesn't keep walking/charging after control is gone.
