@@ -40,6 +40,9 @@ cmake-build-*/
 # Kept locally for study; not part of this project and not published.
 /reference/
 
+# ---- Downloaded CI build artifacts (produced by GitHub Actions) ----
+/gitHubArtifacts/
+
 # ---- General ----
 .DS_Store
 *.log
