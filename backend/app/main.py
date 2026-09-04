@@ -85,6 +85,16 @@ def monitor(_: str = Depends(require_email)) -> dict[str, object]:
     return get_ipc().query_state().model_dump()
 
 
+@app.get("/api/debug/raw-state")
+def debug_raw_state(_: str = Depends(require_admin)) -> dict[str, str]:
+    """Diagnostic: the exact bytes the DLL returned for a state query, with a
+    timestamp so repeated calls can be compared for staleness. Bypasses parsing
+    and the frontend to isolate DLL-vs-transport-vs-UI freezes."""
+    import time
+
+    return {"ts": str(time.time()), "raw": get_ipc().query_state_raw()}
+
+
 # --------------------------------------------------------------------------- #
 # Claim: an unmapped user claims the team currently taking its turn
 # --------------------------------------------------------------------------- #

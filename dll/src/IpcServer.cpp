@@ -71,6 +71,12 @@ namespace {
             teams.push_back(std::move(jt));
         }
         j["teams"] = std::move(teams);
+
+        // Diagnostic: log what the DLL actually built for this query, so we can
+        // tell live-DLL-data from backend/frontend caching.
+        Log::info("state: round_active=" + std::to_string(s.round_active) +
+                  " num_teams=" + std::to_string(s.num_teams) +
+                  " turn_team=" + (s.turn_team ? std::to_string(*s.turn_team) : "none"));
         return j.dump() + "\n";
     }
 

@@ -23,11 +23,17 @@ int __fastcall CTaskTurnGame::hookTurnHandleMessage(CTaskTurnGame* This, int EDX
     switch (mtype) {
         case Constants::TaskMessage_StartTurn:
         case Constants::TaskMessage_TurnStarted:
-            if (data) g_currentTurnTeam.store((int)*(DWORD*)data);
+            if (data) {
+                int team = (int)*(DWORD*)data;
+                g_currentTurnTeam.store(team);
+                Log::info("turn msg " + std::to_string((int)mtype) +
+                          " -> team " + std::to_string(team));
+            }
             break;
         case Constants::TaskMessage_FinishTurn:
         case Constants::TaskMessage_TurnFinished:
             g_currentTurnTeam.store(-1);
+            Log::info("turn msg " + std::to_string((int)mtype) + " -> clear");
             break;
         default:
             break;

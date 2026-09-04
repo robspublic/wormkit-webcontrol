@@ -42,6 +42,11 @@ class AbstractIpcTransport(ABC):
         """Ask the DLL for the full monitor snapshot."""
         ...
 
+    def query_state_raw(self) -> str:
+        """Diagnostic: the raw response text for a state query (default: the
+        parsed snapshot re-dumped; the pipe transport overrides with real bytes)."""
+        return self.query_state().model_dump_json()
+
     @abstractmethod
     def close(self) -> None: ...
 
@@ -191,12 +196,15 @@ class NamedPipeIpcTransport(AbstractIpcTransport):
             return TurnState.from_wire(self._read_line())
 
     def query_state(self) -> GameSnapshot:
+        return GameSnapshot.from_wire(self.query_state_raw().encode("utf-8"))
+
+    def query_state_raw(self) -> str:
         import win32file  # type: ignore[import-not-found]
 
         with self._lock:
             self._ensure_open()
             win32file.WriteFile(self._handle, QueryMessage(what="state").to_wire())
-            return GameSnapshot.from_wire(self._read_line())
+            return self._read_line().decode("utf-8", errors="replace")
 
     def close(self) -> None:
         with self._lock:
