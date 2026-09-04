@@ -24,14 +24,16 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
+    Request,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
+from fastapi.responses import JSONResponse
 
 from .auth import require_admin, require_email
 from .config import settings
-from .ipc import AbstractIpcTransport, create_transport
+from .ipc import AbstractIpcTransport, GameOfflineError, create_transport
 from .protocol import CommandMessage, ControlAction
 from .store import MappingStore
 
@@ -51,6 +53,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="wkWebControl backend", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(GameOfflineError)
+def _game_offline_handler(_request: Request, _exc: GameOfflineError) -> JSONResponse:
+    """The game/DLL isn't reachable yet. Return a tidy 503 (no traceback) so the
+    frontend can show a 'waiting for the game' state and keep polling."""
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": "Waiting for the WormKit plugin / game to come online"},
+    )
 
 
 def get_store() -> MappingStore:
@@ -183,20 +195,25 @@ async def control(ws: WebSocket) -> None:
                 await ws.send_json({"ok": False, "error": f"unknown action: {action_raw}"})
                 continue
 
-            allowed, turn_team = _is_users_turn(email)
-            if not allowed:
-                await ws.send_json({"ok": False, "error": "not your turn", "turn_team": turn_team})
-                continue
+            try:
+                allowed, turn_team = _is_users_turn(email)
+                if not allowed:
+                    await ws.send_json(
+                        {"ok": False, "error": "not your turn", "turn_team": turn_team}
+                    )
+                    continue
 
-            # turn_team is a non-None int when allowed. The DLL identifies the
-            # team by number; CommandMessage.team carries it as a string.
-            cmd = CommandMessage(
-                team=str(turn_team),
-                action=action,
-                value=int(msg.get("value", 0)),
-            )
-            get_ipc().send_command(cmd)
-            await ws.send_json({"ok": True, "action": action.value})
+                # turn_team is a non-None int when allowed. The DLL identifies
+                # the team by number; CommandMessage.team carries it as a string.
+                cmd = CommandMessage(
+                    team=str(turn_team),
+                    action=action,
+                    value=int(msg.get("value", 0)),
+                )
+                get_ipc().send_command(cmd)
+                await ws.send_json({"ok": True, "action": action.value})
+            except GameOfflineError:
+                await ws.send_json({"ok": False, "error": "game offline"})
     except WebSocketDisconnect:
         return
 

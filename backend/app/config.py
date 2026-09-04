@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Tests set WKWC_ENV_FILE_IGNORE=1 so a local backend/.env can't leak prod
+# settings (admin list, transport) into the suite. In normal runs .env is read.
+_ENV_FILE = None if os.environ.get("WKWC_ENV_FILE_IGNORE") else ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="WKWC_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="WKWC_", env_file=_ENV_FILE)
 
     # Host/port of the DLL's TCP IPC server. The DLL listens on 127.0.0.1 by
     # default (same host: WA runs under Wine/Proton on this Linux box).

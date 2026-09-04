@@ -10,7 +10,12 @@ snapshot. The transport is chosen by config (use_mock_ipc), not platform.
 from __future__ import annotations
 
 import threading
+import time
 from abc import ABC, abstractmethod
+
+
+class GameOfflineError(RuntimeError):
+    """The DLL's IPC server isn't reachable (game not running yet / closed)."""
 
 from .protocol import (
     CommandMessage,
@@ -152,6 +157,8 @@ class TcpIpcTransport(AbstractIpcTransport):
         self._port = port
         self._lock = threading.RLock()
         self._sock: "socket.socket | None" = None
+        self._offline = False  # currently unable to reach the DLL
+        self._last_offline_log = 0.0  # rate-limit the "waiting" message
 
     def _ensure_open(self) -> None:
         import socket
@@ -181,19 +188,38 @@ class TcpIpcTransport(AbstractIpcTransport):
             chunks.extend(data)
         return bytes(chunks).split(b"\n", 1)[0]
 
+    def _note_offline(self) -> None:
+        """Log a concise 'waiting for the plugin' message at most once every
+        ~10s while the DLL is unreachable, instead of a traceback per request."""
+        now = time.monotonic()
+        if not self._offline or (now - self._last_offline_log) > 10.0:
+            print(
+                f"wkWebControl: waiting for the WormKit plugin at "
+                f"{self._host}:{self._port} (start Worms Armageddon with the "
+                f"plugin loaded)…"
+            )
+            self._last_offline_log = now
+        self._offline = True
+
     def _request(self, payload: bytes, expect_reply: bool) -> bytes | None:
         """Send a line and optionally read one reply line, reconnecting once if
-        the connection was dropped (e.g. game restarted)."""
+        the connection was dropped (e.g. game restarted). Raises GameOfflineError
+        (not a raw traceback) when the DLL's server can't be reached."""
         with self._lock:
             for attempt in (1, 2):
                 try:
                     self._ensure_open()
                     self._sock.sendall(payload)  # type: ignore[union-attr]
-                    return self._read_line() if expect_reply else None
-                except OSError:
+                    reply = self._read_line() if expect_reply else None
+                    if self._offline:
+                        print("wkWebControl: WormKit plugin is online.")
+                        self._offline = False
+                    return reply
+                except OSError as e:
                     self._reset()
                     if attempt == 2:
-                        raise
+                        self._note_offline()
+                        raise GameOfflineError(str(e)) from None
         return None
 
     def send_command(self, cmd: CommandMessage) -> None:
