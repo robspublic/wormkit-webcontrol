@@ -41,6 +41,7 @@ namespace {
     std::string stateResponse() {
         Protocol::GameSnapshot s = ControlHooks::snapshot_game();
         json j;
+        j["game_id"] = s.game_id;
         j["round_active"] = s.round_active;
         j["before_round_start"] = s.before_round_start;
         j["num_teams"] = s.num_teams;

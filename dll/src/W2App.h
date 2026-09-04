@@ -20,6 +20,11 @@ public:
     static DWORD getAddrGameGlobal();
     static DWORD getAddrDdMain();
 
+    // Monotonic counter incremented each time a new game/match is constructed.
+    // Lets the backend detect a new game (to clear team claims). 0 = no game
+    // has started this session.
+    static int getGameId();
+
     // Root turn-game task, resolved from DdGame (+0x8). 0 if not in a game.
     static DWORD getAddrTurnGame();
 
@@ -29,6 +34,7 @@ private:
     static inline DWORD addrDdGame = 0;
     static inline DWORD addrGameGlobal = 0;
     static inline DWORD addrDdMain = 0;
+    static inline int gameId = 0;
 
     // App-init hook: captures DdGame (first argument).
     static DWORD __stdcall hookInitializeW2App(DWORD ddGame, DWORD ddDisplay,

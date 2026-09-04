@@ -83,6 +83,7 @@ def test_state_query_wire_shape():
 def test_game_snapshot_field_names():
     # Must match the DLL's stateResponse() serialization.
     assert set(GameSnapshot().model_dump().keys()) == {
+        "game_id",
         "round_active",
         "before_round_start",
         "num_teams",
@@ -113,7 +114,7 @@ def test_game_snapshot_field_names():
 def test_game_snapshot_parses_dll_response():
     # A line exactly as the DLL's stateResponse() would emit (two teams, worms).
     line = (
-        b'{"round_active":true,"before_round_start":false,"num_teams":2,'
+        b'{"game_id":3,"round_active":true,"before_round_start":false,"num_teams":2,'
         b'"current_machine":0,"turn_team":0,"turn_time_ms":45000,"teams":['
         b'{"team_number":0,"owner":0,"current_worm":1,"is_turn_holder":true,'
         b'"is_local":true,"worms":['

@@ -1,6 +1,6 @@
 r"""IPC protocol shared between the backend and the wkWebControl DLL.
 
-Wire format: newline-delimited JSON over a named pipe (\\.\pipe\wkwebcontrol).
+Wire format: newline-delimited JSON over TCP loopback (127.0.0.1:27099).
 Each message is a single JSON object on one line.
 
 Backend -> DLL:
@@ -102,6 +102,7 @@ class TeamInfo(BaseModel):
 class GameSnapshot(BaseModel):
     """Full read-only view of game state for the monitor."""
 
+    game_id: int = 0
     round_active: bool = False
     before_round_start: bool = False
     num_teams: int = 0

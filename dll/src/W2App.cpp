@@ -1,5 +1,7 @@
 #include "W2App.h"
 
+#include <string>
+
 #include "Hooks.h"
 #include "Log.h"
 #include "ControlHooks.h"
@@ -39,7 +41,8 @@ DWORD __stdcall W2App::hookConstructGameGlobal(DWORD ddGame) {
     DWORD ret = origConstructGameGlobal(ddGame);
     // GameGlobal pointer is stored in the DdGame object at +0x488.
     addrGameGlobal = *(DWORD*)(ddGame + 0x488);
-    Log::info("GameGlobal constructed");
+    ++gameId;  // new game/match started
+    Log::info("GameGlobal constructed (game " + std::to_string(gameId) + ")");
     return ret;
 }
 
@@ -83,6 +86,7 @@ void W2App::install() {
 DWORD W2App::getAddrDdGame()     { return addrDdGame; }
 DWORD W2App::getAddrGameGlobal() { return addrGameGlobal; }
 DWORD W2App::getAddrDdMain()     { return addrDdMain; }
+int   W2App::getGameId()         { return gameId; }
 
 void W2App::setAddrDdMain(DWORD addr) { addrDdMain = addr; }
 

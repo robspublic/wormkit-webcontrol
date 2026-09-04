@@ -47,6 +47,7 @@ export interface TeamInfo {
 }
 
 export interface GameSnapshot {
+  game_id: number;
   round_active: boolean;
   before_round_start: boolean;
   num_teams: number;

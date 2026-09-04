@@ -65,6 +65,7 @@ namespace Protocol {
     };
 
     struct GameSnapshot {
+        int game_id = 0;                 // increments each new game (0 = none yet)
         bool round_active = false;       // a game/match is loaded (GameGlobal != 0)
         bool before_round_start = false; // worms still being placed
         int num_teams = 0;

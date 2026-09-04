@@ -4,6 +4,7 @@
 
 #include "../Hooks.h"
 #include "../Log.h"
+#include "../ControlHooks.h"
 
 // The active team number, updated from turn messages on the game thread and
 // read from the IPC thread. atomic<int> so the cross-thread read is safe.
@@ -34,6 +35,11 @@ int __fastcall CTaskTurnGame::hookTurnHandleMessage(CTaskTurnGame* This, int EDX
         case Constants::TaskMessage_TurnFinished:
             g_currentTurnTeam.store(-1);
             Log::info("turn msg " + std::to_string((int)mtype) + " -> clear");
+            break;
+        case Constants::TaskMessage_FrameFinish:
+            // Once per logic frame, on the game thread: refresh the published
+            // snapshot by traversing the live task tree here (safe on-thread).
+            ControlHooks::onFrame();
             break;
         default:
             break;

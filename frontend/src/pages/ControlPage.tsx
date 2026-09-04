@@ -19,6 +19,7 @@ export default function ControlPage() {
   const [lastReply, setLastReply] = useState<string>("");
   const [claimError, setClaimError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const lastGameId = useRef<number | null>(null);
 
   // Poll the game snapshot.
   useEffect(() => {
@@ -26,7 +27,16 @@ export default function ControlPage() {
     const tick = () => {
       api
         .monitor()
-        .then((s) => active && setSnap(s))
+        .then((s) => {
+          if (!active) return;
+          setSnap(s);
+          // A new game clears claims server-side; re-fetch my team so the
+          // claim button reappears.
+          if (lastGameId.current !== null && s.game_id !== lastGameId.current) {
+            refreshMe();
+          }
+          lastGameId.current = s.game_id;
+        })
         .catch(() => active && setSnap(null));
     };
     tick();
@@ -35,7 +45,7 @@ export default function ControlPage() {
       active = false;
       clearInterval(id);
     };
-  }, []);
+  }, [refreshMe]);
 
   // Maintain the control WebSocket.
   useEffect(() => {
@@ -80,13 +90,13 @@ export default function ControlPage() {
       <div className={`turn-banner ${isMyTurn ? "active" : "waiting"}`}>
         {!roundActive
           ? "Waiting for a game to start…"
-          : myTeam === null
-            ? turnTeam !== null
+          : turnTeam === null
+            ? "Between turns…"
+            : myTeam === null
               ? `Team ${turnTeam} is up — claim it if it's yours`
-              : "Waiting for a turn…"
-            : isMyTurn
-              ? `Your turn — controlling team ${myTeam}`
-              : `Team ${turnTeam}'s turn — you have team ${myTeam}, please wait`}
+              : isMyTurn
+                ? `Your turn — controlling team ${myTeam}`
+                : `Team ${turnTeam}'s turn — you have team ${myTeam}, please wait`}
       </div>
 
       {canClaim && (

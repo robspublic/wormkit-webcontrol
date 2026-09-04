@@ -18,8 +18,14 @@ class ControlHooks {
 public:
     static void install();
 
+    // Runs on the GAME THREAD once per frame (called from the turn-game's
+    // FrameFinish hook). Builds the snapshot by traversing the live task tree
+    // and publishes it under a mutex. Reading the tree here (not from the IPC
+    // thread) avoids racing the game thread's in-place worm updates.
+    static void onFrame();
+
     // Read the latest game-state snapshot for the backend monitor query. Safe
-    // to call from the IPC thread: returns a copy published by the game thread.
+    // to call from the IPC thread: returns the copy published by onFrame().
     static Protocol::GameSnapshot snapshot_game();
 
     // Back-compat: the narrower "turn" view, derived from the game snapshot.

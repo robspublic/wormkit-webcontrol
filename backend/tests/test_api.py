@@ -27,6 +27,7 @@ def client(tmp_path):
     with TestClient(app) as c:
         app.state.store = store
         app.state.ipc = ipc
+        app.state.last_game_id = 0  # reset new-game detection per test
         c.store = store  # type: ignore[attr-defined]
         c.ipc = ipc  # type: ignore[attr-defined]
         yield c
@@ -149,3 +150,16 @@ def test_admin_delete_single_mapping(client):
     r = client.delete("/api/admin/mappings/0", headers=ADMIN)
     assert r.status_code == 204
     assert client.get("/api/admin/mappings", headers=ADMIN).json() == {}
+
+
+def test_new_game_auto_clears_claims(client):
+    # Alice claims team 0 in the current game.
+    assert _claim(client, ALICE).status_code == 200
+    assert client.get("/api/me", headers=ALICE).json()["team"] == 0
+
+    # A new game starts (game_id bumps). The next state-reading call clears
+    # claims so Alice is no longer mapped and can re-claim.
+    client.ipc.new_game(game_id=2, turn_team=0)  # type: ignore[attr-defined]
+    client.get("/api/monitor", headers=ALICE)  # triggers new-game detection
+    assert client.get("/api/me", headers=ALICE).json()["team"] is None
+    assert _claim(client, ALICE).status_code == 200

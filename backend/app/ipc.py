@@ -89,6 +89,7 @@ class MockIpcTransport(AbstractIpcTransport):
         # Two teams (0 = Red-ish, 1 = Blue-ish), a few worms each, team 0 owned
         # locally and holding the turn.
         return GameSnapshot(
+            game_id=1,
             round_active=True,
             before_round_start=False,
             num_teams=2,
@@ -135,7 +136,15 @@ class MockIpcTransport(AbstractIpcTransport):
     def set_turn(self, turn_team: int | None) -> None:
         """Test/dev helper to simulate a turn change (by team number)."""
         with self._lock:
+            gid = self._snapshot.game_id
             self._snapshot = self._default_snapshot(turn_team)
+            self._snapshot.game_id = gid  # a turn change is not a new game
+
+    def new_game(self, game_id: int, turn_team: int | None = 0) -> None:
+        """Test/dev helper to simulate a new game (bumps game_id)."""
+        with self._lock:
+            self._snapshot = self._default_snapshot(turn_team)
+            self._snapshot.game_id = game_id
 
     def close(self) -> None:  # nothing to release
         return

@@ -28,6 +28,7 @@ void publishSnapshot(const Protocol::GameSnapshot& snap) {
 // (round_active=false) snapshot when not in a game.
 Protocol::GameSnapshot buildSnapshot() {
     Protocol::GameSnapshot snap;
+    snap.game_id = W2App::getGameId();
 
     DWORD gg = W2App::getAddrGameGlobal();
     if (gg == 0) {
@@ -110,10 +111,11 @@ void applyCommand(CTaskWorm* worm, const ControlCommand& cmd) {
     }
 }
 
-// Called once per game frame (from the installed hook, wired later). For now it
-// builds and publishes the read-only snapshot; the control-drain path is a
-// sketch pending the write-side hook.
-void onFrame() {
+} // namespace
+
+// Runs on the game thread (turn-game FrameFinish). Traverse the live tree and
+// publish a copied snapshot; the IPC thread only ever reads the published copy.
+void ControlHooks::onFrame() {
     publishSnapshot(buildSnapshot());
 
     // TODO(control): once the turn-holder worm is resolvable for writes, drain
@@ -121,28 +123,25 @@ void onFrame() {
     (void)&applyCommand;
 }
 
-} // namespace
-
 void ControlHooks::install() {
-    // TODO(control): hook the per-frame dispatch point to call onFrame() every
-    // frame. Until then the snapshot is built on demand (see note below).
-    (void)&onFrame;
+    // onFrame() is invoked from CTaskTurnGame's FrameFinish hook (game thread).
     Log::info("ControlHooks::install (snapshot builder ready)");
 }
 
 void ControlHooks::onGameTornDown() {
     CTaskTurnGame::clearTurn();
+    // Clear the published snapshot so a between-games query reports "no game"
+    // rather than the last game's stale data.
+    std::lock_guard<std::mutex> lock(g_snapshotMutex);
+    g_snapshot = Protocol::GameSnapshot{};
 }
 
 Protocol::GameSnapshot ControlHooks::snapshot_game() {
-    // Until the per-frame hook is wired, build the snapshot on demand from the
-    // IPC thread. This is a read-only traversal of game memory; the game runs
-    // single-threaded for logic, but a query can race a frame. That's
-    // acceptable for a monitor (worst case: one field is a frame stale).
-    //
-    // When onFrame() is hooked, switch to returning the published g_snapshot
-    // under the lock instead.
-    return buildSnapshot();
+    // Return the copy published on the game thread by onFrame(). Reading the
+    // live task tree from this (IPC) thread would race the game thread's
+    // in-place worm updates and yield frozen/torn values.
+    std::lock_guard<std::mutex> lock(g_snapshotMutex);
+    return g_snapshot;
 }
 
 Protocol::TurnSnapshot ControlHooks::snapshot_turn() {

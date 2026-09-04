@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI):
     app.state.ipc = create_transport(
         settings.use_mock_ipc, settings.game_host, settings.game_port
     )
+    app.state.last_game_id = 0  # for new-game detection (auto-clear claims)
     try:
         yield
     finally:
@@ -73,6 +74,20 @@ def get_ipc() -> AbstractIpcTransport:
     return app.state.ipc
 
 
+def get_state():
+    """Fetch the game snapshot and, if the DLL reports a new game_id since we
+    last saw one, clear all team claims so everyone re-claims for the new game.
+    All state-reading paths go through here so the auto-clear is consistent."""
+    state = get_ipc().query_state()
+    last = getattr(app.state, "last_game_id", 0)
+    # game_id increments per game; a positive change means a fresh game loaded.
+    if state.game_id and state.game_id != last:
+        if last != 0:  # don't clear on the very first observation
+            get_store().clear_all()
+        app.state.last_game_id = state.game_id
+    return state
+
+
 # --------------------------------------------------------------------------- #
 # Basic / identity
 # --------------------------------------------------------------------------- #
@@ -96,7 +111,7 @@ def turn(_: str = Depends(require_email)) -> dict[str, object]:
 @app.get("/api/monitor")
 def monitor(_: str = Depends(require_email)) -> dict[str, object]:
     """Full read-only game snapshot for the monitor view."""
-    return get_ipc().query_state().model_dump()
+    return get_state().model_dump()
 
 
 @app.get("/api/debug/raw-state")
@@ -116,7 +131,11 @@ def debug_raw_state(_: str = Depends(require_admin)) -> dict[str, str]:
 def claim(email: str = Depends(require_email)) -> dict[str, object]:
     store = get_store()
 
-    # One team per user: refuse if the caller already owns a team.
+    # Fetch state first: this also clears claims if a new game has started, so a
+    # stale prior-game claim doesn't block re-claiming in the new game.
+    state = get_state()
+
+    # One team per user: refuse if the caller already owns a team (this game).
     existing = store.team_for_email(email)
     if existing is not None:
         raise HTTPException(
@@ -124,7 +143,6 @@ def claim(email: str = Depends(require_email)) -> dict[str, object]:
             detail=f"You already control team {existing}",
         )
 
-    state = get_ipc().query_state()
     turn_team = state.turn_team
     if turn_team is None:
         raise HTTPException(
@@ -168,7 +186,7 @@ def clear_mappings(_: str = Depends(require_admin)) -> dict[str, str]:
 def _is_users_turn(email: str) -> tuple[bool, int | None]:
     """Return (allowed, turn_team_number). The user may act only if the current
     turn-holding team is mapped to their email."""
-    state = get_ipc().query_state()
+    state = get_state()
     turn_team = state.turn_team
     if turn_team is None:
         return False, None
