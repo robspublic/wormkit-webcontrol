@@ -14,12 +14,6 @@ namespace {
     int iniInt(const char* key, int def) {
         return (int)GetPrivateProfileIntA(kSection, key, def, kIniFile);
     }
-
-    std::string iniStr(const char* key, const std::string& def) {
-        char buf[512] = {0};
-        GetPrivateProfileStringA(kSection, key, def.c_str(), buf, sizeof(buf), kIniFile);
-        return std::string(buf);
-    }
 }
 
 void Config::readConfig() {
@@ -27,7 +21,7 @@ void Config::readConfig() {
     devConsole     = iniInt("DevConsole", 0) != 0;
     checkWaVersion = iniInt("CheckWaVersion", 1) != 0;
     mutexEnabled   = iniInt("Mutex", 1) != 0;
-    pipeName       = iniStr("PipeName", "\\\\.\\pipe\\wkwebcontrol");
+    port           = iniInt("Port", 27099);
 }
 
 bool Config::isModuleEnabled()     { return enabled; }
@@ -43,7 +37,7 @@ bool Config::waVersionCheck() {
     return true;
 }
 
-const std::string& Config::getPipeName() { return pipeName; }
+int Config::getPort() { return port; }
 
 std::string Config::getFullStr() {
     return std::string(PROJECT_NAME) + " " + PROJECT_VERSION;

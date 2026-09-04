@@ -6,7 +6,7 @@
 #include <queue>
 #include <string>
 
-// Thread-safe hand-off between the IPC (named-pipe) thread and the game thread.
+// Thread-safe hand-off between the IPC (TCP server) thread and the game thread.
 //
 //   Producer: IpcServer thread   -> push()  web commands
 //   Consumer: game frame hook     -> drain() and apply to the active worm

@@ -40,7 +40,9 @@ from .store import MappingStore
 async def lifespan(app: FastAPI):
     """Create shared resources (store + IPC transport) for the app's lifetime."""
     app.state.store = MappingStore(settings.db_path)
-    app.state.ipc = create_transport(settings.use_mock_ipc, settings.pipe_name)
+    app.state.ipc = create_transport(
+        settings.use_mock_ipc, settings.game_host, settings.game_port
+    )
     try:
         yield
     finally:

@@ -1,5 +1,7 @@
 #include "IpcServer.h"
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <atomic>
 #include <optional>
@@ -118,19 +120,19 @@ namespace {
         return std::nullopt;
     }
 
-    // Read from the connected pipe, splitting the byte stream on '\n' into
-    // messages. Loops until the client disconnects or the server stops.
-    void servePipe(HANDLE pipe) {
-        std::string buffer;
-        char chunk[1024];
-        while (g_running.load()) {
-            DWORD read = 0;
-            if (!ReadFile(pipe, chunk, sizeof(chunk), &read, nullptr) || read == 0) {
-                break; // client disconnected or error
-            }
-            buffer.append(chunk, read);
+    // The listening socket, so stop() can unblock accept() from another thread.
+    SOCKET g_listenSock = INVALID_SOCKET;
 
-            // Process every complete line currently in the buffer.
+    // Serve one connected client: read bytes, split on '\n', respond per line.
+    // Returns when the client disconnects or the server stops.
+    void serveClient(SOCKET client) {
+        std::string buffer;
+        char chunk[2048];
+        while (g_running.load()) {
+            int n = recv(client, chunk, sizeof(chunk), 0);
+            if (n <= 0) break; // client disconnected or error
+
+            buffer.append(chunk, n);
             size_t nl;
             while ((nl = buffer.find('\n')) != std::string::npos) {
                 std::string line = buffer.substr(0, nl);
@@ -139,56 +141,81 @@ namespace {
 
                 auto response = handleMessage(line);
                 if (response) {
-                    DWORD written = 0;
-                    WriteFile(pipe, response->data(),
-                              (DWORD)response->size(), &written, nullptr);
+                    // send() may not write it all at once; loop until done.
+                    const char* p = response->data();
+                    int remaining = (int)response->size();
+                    while (remaining > 0) {
+                        int sent = send(client, p, remaining, 0);
+                        if (sent <= 0) return;
+                        p += sent;
+                        remaining -= sent;
+                    }
                 }
             }
         }
     }
 
-    void serverLoop(std::string pipeName) {
-        Log::info("IpcServer listening on " + pipeName);
-        while (g_running.load()) {
-            HANDLE pipe = CreateNamedPipeA(
-                pipeName.c_str(),
-                PIPE_ACCESS_DUPLEX,
-                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-                1,           // single instance: one local backend
-                4096, 4096,  // out/in buffer sizes
-                0, nullptr);
-            if (pipe == INVALID_HANDLE_VALUE) {
-                Log::error("CreateNamedPipe failed");
-                Sleep(500);
-                continue;
-            }
-
-            // Block until the backend connects.
-            BOOL connected = ConnectNamedPipe(pipe, nullptr)
-                                 ? TRUE
-                                 : (GetLastError() == ERROR_PIPE_CONNECTED);
-            if (connected) {
-                servePipe(pipe);
-            }
-
-            DisconnectNamedPipe(pipe);
-            CloseHandle(pipe);
+    void serverLoop(unsigned short port) {
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+            Log::error("WSAStartup failed");
+            return;
         }
+
+        g_listenSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (g_listenSock == INVALID_SOCKET) {
+            Log::error("socket() failed");
+            WSACleanup();
+            return;
+        }
+
+        // Loopback only: the backend runs on the same host (native Linux side,
+        // reachable because Wine maps Winsock TCP onto the host stack).
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+
+        BOOL reuse = TRUE;
+        setsockopt(g_listenSock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse));
+
+        if (bind(g_listenSock, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR ||
+            listen(g_listenSock, 1) == SOCKET_ERROR) {
+            Log::error("bind/listen failed on 127.0.0.1:" + std::to_string(port));
+            closesocket(g_listenSock);
+            g_listenSock = INVALID_SOCKET;
+            WSACleanup();
+            return;
+        }
+
+        Log::info("IpcServer listening on 127.0.0.1:" + std::to_string(port));
+        while (g_running.load()) {
+            SOCKET client = accept(g_listenSock, nullptr, nullptr);
+            if (client == INVALID_SOCKET) break; // listen socket closed by stop()
+            serveClient(client);
+            closesocket(client);
+        }
+
+        if (g_listenSock != INVALID_SOCKET) {
+            closesocket(g_listenSock);
+            g_listenSock = INVALID_SOCKET;
+        }
+        WSACleanup();
         Log::info("IpcServer stopped");
     }
 }
 
 void IpcServer::install() {
     if (g_running.exchange(true)) return; // already running
-    g_thread = std::thread(serverLoop, Config::getPipeName());
+    g_thread = std::thread(serverLoop, (unsigned short)Config::getPort());
 }
 
 void IpcServer::stop() {
     if (!g_running.exchange(false)) return;
-    // Nudge the accept by opening/closing a client handle so ConnectNamedPipe
-    // returns; then join.
-    HANDLE nudge = CreateFileA(Config::getPipeName().c_str(), GENERIC_READ,
-                               0, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (nudge != INVALID_HANDLE_VALUE) CloseHandle(nudge);
+    // Closing the listen socket unblocks accept() so the thread can exit.
+    if (g_listenSock != INVALID_SOCKET) {
+        closesocket(g_listenSock);
+        g_listenSock = INVALID_SOCKET;
+    }
     if (g_thread.joinable()) g_thread.join();
 }

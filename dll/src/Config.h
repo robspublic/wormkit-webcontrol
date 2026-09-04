@@ -11,7 +11,7 @@
 //   Enabled=1
 //   DevConsole=0
 //   CheckWaVersion=1
-//   PipeName=\\.\pipe\wkwebcontrol
+//   Port=27099
 class Config {
 public:
     static void readConfig();
@@ -24,7 +24,11 @@ public:
     // built against (WA_TARGET_VERSION). When CheckWaVersion=0, always true.
     static bool waVersionCheck();
 
-    static const std::string& getPipeName();
+    // TCP port the IPC server listens on (127.0.0.1). The backend connects here.
+    // A named pipe can't be used: WA runs under Wine/Proton and its pipe
+    // namespace isn't reachable by the native-Linux backend; Wine maps Winsock
+    // TCP onto the host stack, so loopback TCP works across the boundary.
+    static int getPort();
 
     // "wkWebControl 0.1.0" style label for message boxes.
     static std::string getFullStr();
@@ -34,7 +38,7 @@ private:
     static inline bool devConsole = false;
     static inline bool checkWaVersion = true;
     static inline bool mutexEnabled = true;
-    static inline std::string pipeName = "\\\\.\\pipe\\wkwebcontrol";
+    static inline int port = 27099;
 };
 
 #endif // WKWEBCONTROL_CONFIG_H

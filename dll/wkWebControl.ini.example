@@ -11,5 +11,6 @@ CheckWaVersion=1
 ; Single-instance guard.
 Mutex=1
 
-; Named pipe the FastAPI backend connects to. Must match the backend config.
-PipeName=\\.\pipe\wkwebcontrol
+; TCP port the module's IPC server listens on (127.0.0.1). The FastAPI backend
+; connects here. Must match the backend's WKWC_GAME_PORT.
+Port=27099

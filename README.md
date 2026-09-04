@@ -19,15 +19,15 @@ Browser (React/Vite)
    |  HTTPS + X-Auth-Email header (set by your oauth-proxy / nginx)
    v
 FastAPI backend            (same machine as WA.exe)
-   |  named pipe  \\.\pipe\wkwebcontrol  (JSON)
+   |  TCP loopback  127.0.0.1:27099  (newline-JSON)
    v
-wkWebControl.dll           (WormKit module inside WA.exe)
+wkWebControl.dll           (WormKit module inside WA.exe, under Wine/Proton)
    |  writes fields on the active worm / drives input, at the game's tick
    v
 Worms Armageddon game state
 ```
 
-Control commands never touch game memory from the pipe thread. The pipe thread
+Control commands never touch game memory from the IPC thread. That thread
 enqueues commands; the DLL drains that queue on the game's own per-frame message
 hook and applies them to the turn-holding worm. This keeps the game
 deterministic and avoids cross-thread crashes. The turn-holder check is enforced
@@ -38,7 +38,7 @@ inside the DLL, not just in the web layer.
 | Directory   | What it is | Toolchain |
 |-------------|------------|-----------|
 | `dll/`      | `wkWebControl` WormKit plugin (C++, PolyHook 2.0, pattern scanning) | CMake + MSVC (Windows / CI) |
-| `backend/`  | FastAPI app: admin API, control WebSocket, turn gating, pipe client | Python 3 + venv |
+| `backend/`  | FastAPI app: admin API, control WebSocket, turn gating, TCP client | Python 3 + venv |
 | `frontend/` | Vite/React: admin page + player control page | Node |
 | `scripts/`  | Helpers to run the dev stack and to fetch/deploy the DLL | bash + `gh` |
 | `reference/`| Cloned open-source WormKit modules used as implementation models | (read-only) |
@@ -84,8 +84,8 @@ drift out of sync.
 
 On the machine running WA, this builds the frontend and starts the backend on
 port 8000 serving both the API/WebSocket and the built SPA (single origin). It
-uses the **real** named-pipe IPC transport (mock off), so the backend talks to
-the wkWebControl DLL inside `WA.exe`.
+uses the **real** TCP IPC transport (mock off), so the backend talks to the
+wkWebControl DLL inside `WA.exe`.
 
 ```
 scripts/run-prod.sh                 # build frontend, serve app on 0.0.0.0:8000
@@ -144,7 +144,7 @@ Typical loop: push a change → `fetch-artifact.sh --wait` → `deploy-artifact.
 
 ## IPC contract
 
-Backend and DLL speak newline-delimited JSON over the pipe. The contract is
+Backend and DLL speak newline-delimited JSON over TCP loopback. The contract is
 defined on both sides (`backend/app/protocol.py`, `dll/src/Protocol.h`) and
 pinned by `backend/tests/test_protocol.py`:
 

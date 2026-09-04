@@ -1,7 +1,7 @@
 # wkWebControl (WormKit module)
 
 A WormKit plugin for **Worms Armageddon 3.8.1** that receives web-based control
-commands over a named pipe and applies them to the current turn-holding worm.
+commands over TCP loopback and applies them to the current turn-holding worm.
 
 ## Layout
 
@@ -21,15 +21,15 @@ dll/
     ├── W2App.*             # game globals (GameGlobal, DdMain, TurnGame)
     ├── entities/           # CTask, CGameTask, CTaskTeam, CTaskTurnGame, CTaskWorm
     ├── Protocol.*          # shared IPC wire contract (actions, TurnSnapshot)
-    ├── ControlState.*      # thread-safe command queue (pipe -> game thread)
+    ├── ControlState.*      # thread-safe command queue (IPC -> game thread)
     ├── ControlHooks.*      # per-frame hook: drain queue -> apply to worm
-    └── IpcServer.*         # named-pipe server thread (backend <-> DLL)
+    └── IpcServer.*         # TCP server thread (backend <-> DLL)
 ```
 
 ## IPC wire contract
 
 `src/Protocol.h` defines the constants shared with the backend
-(`backend/app/protocol.py`). Transport is newline-delimited JSON over the pipe:
+(`backend/app/protocol.py`). Transport is newline-delimited JSON over TCP:
 
 - Backend → DLL command: `{"type":"cmd","team":"Red","action":"move_left","value":0}`
 - Backend → DLL query:   `{"type":"query","what":"turn"}`
@@ -81,7 +81,7 @@ requiring reverse-engineering is marked `TODO(offsets)`:
   (The IPC read/write loop, JSON, and turn-snapshot plumbing are done; only the
   game-memory `TODO(offsets)` inside `onFrame()` / `applyCommand()` remain.)
 
-`IpcServer` (pipe read loop + JSON parse/serialize) is complete.
+`IpcServer` (TCP read loop + JSON parse/serialize) is complete.
 
 These are bounded tasks: because the local game is exactly WA 3.8.1, the
 reference module signatures are expected to resolve directly.

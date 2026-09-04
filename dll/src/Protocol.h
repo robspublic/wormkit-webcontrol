@@ -12,7 +12,7 @@
 //   - action strings  <-> ControlAction StrEnum values
 //   - field names     <-> CommandMessage / QueryMessage / TurnState fields
 //
-// Transport: newline-delimited JSON over the named pipe.
+// Transport: newline-delimited JSON over TCP loopback (127.0.0.1:27099).
 //
 //   Backend -> DLL:
 //     {"type":"cmd","team":"Red","action":"move_left","value":0}

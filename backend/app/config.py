@@ -8,11 +8,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="WKWC_", env_file=".env")
 
-    # Named pipe the DLL listens on (production, Windows).
-    pipe_name: str = r"\\.\pipe\wkwebcontrol"
+    # Host/port of the DLL's TCP IPC server. The DLL listens on 127.0.0.1 by
+    # default (same host: WA runs under Wine/Proton on this Linux box).
+    game_host: str = "127.0.0.1"
+    game_port: int = 27099
 
-    # Force the in-process mock transport (dev on Linux, tests). When False,
-    # a Windows named pipe is used only if running on win32.
+    # Force the in-process mock transport (dev without the game running / tests).
     use_mock_ipc: bool = False
 
     # SQLite file for the team<->email mapping.

@@ -1,16 +1,14 @@
 """Transport to the wkWebControl DLL.
 
-Production uses a Windows named pipe (the backend runs on the same Windows
-machine as WA.exe). For development and testing on Linux, a mock transport
-records commands and returns a canned game snapshot, so the whole backend runs
-and is testable without the game or Windows.
-
-The concrete transport is chosen at runtime by platform, or forced via config.
+Production connects over TCP loopback to the DLL's IPC server (the DLL runs
+inside WA under Wine/Proton on the same host; Wine maps Winsock TCP onto the
+host stack, so 127.0.0.1 is reachable from the native-Linux backend). For
+development/testing without the game, a mock transport returns a canned game
+snapshot. The transport is chosen by config (use_mock_ipc), not platform.
 """
 
 from __future__ import annotations
 
-import sys
 import threading
 from abc import ABC, abstractmethod
 
@@ -44,7 +42,7 @@ class AbstractIpcTransport(ABC):
 
     def query_state_raw(self) -> str:
         """Diagnostic: the raw response text for a state query (default: the
-        parsed snapshot re-dumped; the pipe transport overrides with real bytes)."""
+        parsed snapshot re-dumped; the TCP transport overrides with real bytes)."""
         return self.query_state().model_dump_json()
 
     @abstractmethod
@@ -138,85 +136,88 @@ class MockIpcTransport(AbstractIpcTransport):
         return
 
 
-class NamedPipeIpcTransport(AbstractIpcTransport):
-    """Windows named-pipe client to the DLL.
+class TcpIpcTransport(AbstractIpcTransport):
+    """TCP client to the DLL's IPC server (127.0.0.1:<port>).
 
-    Opens the pipe on demand and serializes access with a lock, since the DLL
-    side is configured for a single client instance. Reconnects if the game
-    (and thus the pipe server) restarts.
+    The DLL runs inside WA under Wine/Proton; a Windows named pipe isn't
+    reachable from the native-Linux backend, but Wine maps Winsock TCP onto the
+    host stack, so loopback TCP works across the boundary. This transport is
+    also plain cross-platform Python sockets, so it needs no OS-specific deps.
+
+    A single connection is reused and re-established if the game restarts.
     """
 
-    def __init__(self, pipe_name: str = r"\\.\pipe\wkwebcontrol") -> None:
-        self._pipe_name = pipe_name
+    def __init__(self, host: str = "127.0.0.1", port: int = 27099) -> None:
+        self._host = host
+        self._port = port
         self._lock = threading.RLock()
-        self._handle = None  # opened lazily
+        self._sock: "socket.socket | None" = None
 
     def _ensure_open(self) -> None:
-        if self._handle is not None:
-            return
-        # Imported here so the module loads on non-Windows platforms.
-        import win32file  # type: ignore[import-not-found]
+        import socket
 
-        self._handle = win32file.CreateFile(
-            self._pipe_name,
-            win32file.GENERIC_READ | win32file.GENERIC_WRITE,
-            0,
-            None,
-            win32file.OPEN_EXISTING,
-            0,
-            None,
-        )
+        if self._sock is not None:
+            return
+        s = socket.create_connection((self._host, self._port), timeout=2.0)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self._sock = s
+
+    def _reset(self) -> None:
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            finally:
+                self._sock = None
 
     def _read_line(self) -> bytes:
-        """Read from the pipe until a newline (the DLL delimits each response
-        with '\\n'). The state snapshot can exceed one buffer, so accumulate."""
-        import win32file  # type: ignore[import-not-found]
-
+        """Read until a newline (the DLL delimits each response with '\\n').
+        A state snapshot can span multiple recv() chunks, so accumulate."""
+        assert self._sock is not None
         chunks = bytearray()
         while b"\n" not in chunks:
-            _, data = win32file.ReadFile(self._handle, 8192)
+            data = self._sock.recv(8192)
             if not data:
                 break
             chunks.extend(data)
         return bytes(chunks).split(b"\n", 1)[0]
 
-    def send_command(self, cmd: CommandMessage) -> None:
-        import win32file  # type: ignore[import-not-found]
-
+    def _request(self, payload: bytes, expect_reply: bool) -> bytes | None:
+        """Send a line and optionally read one reply line, reconnecting once if
+        the connection was dropped (e.g. game restarted)."""
         with self._lock:
-            self._ensure_open()
-            win32file.WriteFile(self._handle, cmd.to_wire())
+            for attempt in (1, 2):
+                try:
+                    self._ensure_open()
+                    self._sock.sendall(payload)  # type: ignore[union-attr]
+                    return self._read_line() if expect_reply else None
+                except OSError:
+                    self._reset()
+                    if attempt == 2:
+                        raise
+        return None
+
+    def send_command(self, cmd: CommandMessage) -> None:
+        self._request(cmd.to_wire(), expect_reply=False)
 
     def query_turn(self) -> TurnState:
-        import win32file  # type: ignore[import-not-found]
-
-        with self._lock:
-            self._ensure_open()
-            win32file.WriteFile(self._handle, QueryMessage(what="turn").to_wire())
-            return TurnState.from_wire(self._read_line())
+        line = self._request(QueryMessage(what="turn").to_wire(), expect_reply=True)
+        return TurnState.from_wire(line or b"{}")
 
     def query_state(self) -> GameSnapshot:
         return GameSnapshot.from_wire(self.query_state_raw().encode("utf-8"))
 
     def query_state_raw(self) -> str:
-        import win32file  # type: ignore[import-not-found]
-
-        with self._lock:
-            self._ensure_open()
-            win32file.WriteFile(self._handle, QueryMessage(what="state").to_wire())
-            return self._read_line().decode("utf-8", errors="replace")
+        line = self._request(QueryMessage(what="state").to_wire(), expect_reply=True)
+        return (line or b"{}").decode("utf-8", errors="replace")
 
     def close(self) -> None:
         with self._lock:
-            if self._handle is not None:
-                import win32file  # type: ignore[import-not-found]
-
-                win32file.CloseHandle(self._handle)
-                self._handle = None
+            self._reset()
 
 
-def create_transport(use_mock: bool, pipe_name: str) -> AbstractIpcTransport:
-    """Factory: pick the transport for the current platform / config."""
-    if use_mock or sys.platform != "win32":
+def create_transport(use_mock: bool, host: str, port: int) -> AbstractIpcTransport:
+    """Factory: the mock transport only when explicitly requested; otherwise the
+    real TCP transport (works on Linux too, since the DLL listens over TCP)."""
+    if use_mock:
         return MockIpcTransport()
-    return NamedPipeIpcTransport(pipe_name)
+    return TcpIpcTransport(host, port)

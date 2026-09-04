@@ -102,5 +102,7 @@ target_include_directories(wkWebControl PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/gen)
 set_property(TARGET wkWebControl PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 
 # psapi: GetModuleInformation used by the vendored pattern scanner.
+# ws2_32: Winsock TCP for the IPC server (loopback; reachable from the native
+#         Linux backend because Wine maps Winsock onto the host network stack).
 # nlohmann_json: header-only IPC JSON.
-target_link_libraries(wkWebControl PolyHook_2 psapi nlohmann_json::nlohmann_json)
+target_link_libraries(wkWebControl PolyHook_2 psapi ws2_32 nlohmann_json::nlohmann_json)

@@ -18,13 +18,15 @@ cp .env.example .env      # defaults to the mock transport (no game needed)
 ```
 
 With `WKWC_USE_MOCK_IPC=1` (default in `.env.example`) the backend runs without
-the game: commands are recorded in-process and `/api/turn` returns a canned
-state. On the production Windows host, set `WKWC_USE_MOCK_IPC=0` and the backend
-talks to the DLL over `WKWC_PIPE_NAME`.
+the game: commands are recorded in-process and the monitor returns a canned
+snapshot. To talk to the real game, set `WKWC_USE_MOCK_IPC=0`; the backend then
+connects over TCP to the DLL at `WKWC_GAME_HOST:WKWC_GAME_PORT` (default
+`127.0.0.1:27099`, matching the `Port` in `wkWebControl.ini`).
 
-> The Windows named-pipe transport needs `pywin32`, which is only installed on
-> Windows. It is intentionally **not** a hard dependency so the backend installs
-> and runs on Linux for development.
+> The DLL runs inside WA under Wine/Proton, so a Windows named pipe isn't
+> reachable from the native-Linux backend. The IPC uses TCP loopback instead,
+> which Wine maps onto the host stack — plain cross-platform sockets, no
+> OS-specific dependency.
 
 ## Test
 

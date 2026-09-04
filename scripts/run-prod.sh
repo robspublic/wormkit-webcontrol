@@ -7,9 +7,9 @@
 # (worms.operimentum.com) proxies to http://<this-host>:8000 and injects the
 # X-Auth-Email header.
 #
-# Unlike run-dev.sh, this uses the REAL named-pipe IPC transport (mock OFF), so
-# the backend talks to the wkWebControl DLL inside WA.exe. That means it is only
-# meaningful on the Windows machine running the game with the DLL loaded.
+# Unlike run-dev.sh, this uses the REAL TCP IPC transport (mock OFF), so the
+# backend connects to the wkWebControl DLL's TCP server (127.0.0.1:27099) inside
+# WA running under Wine/Proton on this host.
 #
 # Usage:
 #   scripts/run-prod.sh [--port <n>] [--host <addr>]
@@ -82,9 +82,8 @@ if ! grep -qE '^WKWC_ADMIN_EMAILS=.+' .env; then
 fi
 
 # ---- run ---------------------------------------------------------------------
-# Transport and admin settings come from backend/.env (created above). The
-# named-pipe transport (WKWC_USE_MOCK_IPC=0) is only fully live on the Windows
-# game host; on other platforms the factory falls back to the mock. An explicit
+# Transport and admin settings come from backend/.env (created above).
+# WKWC_USE_MOCK_IPC=0 uses the real TCP transport to the DLL; an explicit
 # environment override still wins if you set WKWC_USE_MOCK_IPC before running.
 echo "Starting production app on http://${BIND}:${PORT} (settings from backend/.env)…"
 echo "nginx (worms.operimentum.com) should proxy to this host:${PORT}."
