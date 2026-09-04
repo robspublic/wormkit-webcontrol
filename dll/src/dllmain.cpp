@@ -9,7 +9,6 @@
 #include "Log.h"
 #include "Hooks.h"
 #include "W2App.h"
-#include "TaskMessageFifo.h"
 #include "entities/CTaskTeam.h"
 #include "entities/CTaskTurnGame.h"
 #include "entities/CTaskWorm.h"
@@ -22,7 +21,6 @@ static void install() {
     srand((unsigned)(time(nullptr) * GetCurrentProcessId()));
 
     W2App::install();
-    TaskMessageFifo::install();
     CTaskTeam::install();
     CTaskTurnGame::install();
     CTaskWorm::install();

@@ -4,9 +4,9 @@
 #include "../Log.h"
 
 void CTaskWorm::install() {
-    // Worms are reached read-only by traversing the task tree, and control
-    // input is injected through the game's input FIFO (see TaskMessageFifo /
-    // ControlHooks), so no per-worm hook is needed.
+    // Worms are reached read-only by traversing the task tree; control input is
+    // dispatched to the turn-game task (see ControlHooks), so no per-worm hook
+    // is needed.
     Log::info("CTaskWorm::install (read-only)");
 }
 

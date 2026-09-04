@@ -82,7 +82,6 @@ add_library(wkWebControl SHARED
         src/PatternScanner.cpp    src/PatternScanner.h
         src/Constants.h
         src/W2App.cpp             src/W2App.h
-        src/TaskMessageFifo.cpp   src/TaskMessageFifo.h
         src/Log.cpp               src/Log.h
         src/Protocol.cpp          src/Protocol.h
         src/entities/CTask.h

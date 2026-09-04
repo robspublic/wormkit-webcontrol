@@ -6,7 +6,7 @@
 
 // A worm task. Read-only here: fields (position, facing, weapon, active) are
 // read to build the monitor snapshot. Control input is not written to these
-// fields; it is injected through the game's input FIFO (see TaskMessageFifo).
+// fields; it is dispatched to the turn-game task (see ControlHooks).
 //
 // TODO(offsets): confirm every field offset against WA 3.8.1.
 class CTaskWorm : public CGameTask {

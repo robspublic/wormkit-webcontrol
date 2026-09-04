@@ -8,12 +8,13 @@
 // onFrame() runs on the game thread (turn-game FrameFinish). Each frame it
 // builds+publishes the read-only snapshot and then, while a game is live,
 // translates the current held-input state (ControlState) into real WA input
-// messages enqueued in the game's input FIFO (see TaskMessageFifo):
+// messages dispatched to the turn-game task's HandleMessage (the same call the
+// reference uses), which routes them to its active worm:
 //   - movement / aim: re-sent every frame while the button is held,
 //   - fire: FireWeapon on the press edge, ReleaseWeapon on the release edge.
 //
-// The game's own ProcessInput routes those messages to the current turn-holder,
-// so turn-gating (enforced by the backend claim flow) is respected by design.
+// The turn-game applies input to the current turn-holder, so turn-gating
+// (enforced by the backend claim flow) is respected by design.
 class ControlHooks {
 public:
     static void install();

@@ -1,13 +1,14 @@
 #include "ControlHooks.h"
 
+#include <cstring>
 #include <mutex>
+#include <string>
 
 #include "ControlState.h"
 #include "W2App.h"
 #include "Hooks.h"
 #include "IpcServer.h"
 #include "Log.h"
-#include "TaskMessageFifo.h"
 #include "entities/CTask.h"
 #include "entities/CTaskTeam.h"
 #include "entities/CTaskTurnGame.h"
@@ -90,21 +91,47 @@ Protocol::GameSnapshot buildSnapshot() {
     return snap;
 }
 
-// Enqueue one input message into the game's input FIFO (*(ddGame+0x40)). The
-// turn-game's ProcessInput then applies it to the active worm on this frame.
-// A size-0 payload matches how the game queues discrete directional/fire input
-// events. No-op (safe) if we're not in a game.
+// Dispatch one input message to the turn-game task, the way the reference does
+// it (turngame->HandleMessage(...) directly, with a zeroed payload buffer).
+// This is the game's real input routing: the turn-game applies the input to
+// its active worm. No-op (safe) if we're not in a game.
+//
+// The payload is a 1024-byte zeroed buffer with the leading DWORD set to the
+// active team number, mirroring how the reference builds StartTurn/team
+// messages. For simple directional/fire input the game may ignore the payload,
+// but sending a correctly sized zeroed buffer matches the reference and avoids
+// the "size-0 gets dropped" failure mode.
 void sendInput(Constants::TaskMessage mtype) {
-    DWORD ddGame = W2App::getAddrDdGame();
-    if (ddGame == 0) return;
-    auto* inputFifo = *(TaskMessageFifo**)(ddGame + 0x40);
-    if (inputFifo == nullptr) return;
-    TaskMessageFifo::callTaskMessageSend(inputFifo, 0, mtype, nullptr);
+    auto* tg = (CTaskTurnGame*)W2App::getAddrTurnGame();
+    if (tg == nullptr) return;
+
+    unsigned char buff[1024];
+    memset(buff, 0, sizeof(buff));
+    const int activeTeam = CTaskTurnGame::currentTurnTeam();
+    if (activeTeam >= 0) *(DWORD*)buff = (DWORD)activeTeam;
+
+    tg->vtable8_HandleMessage(tg, mtype, sizeof(buff), buff);
 }
 
 // Was the fire button held on the previous frame? Used to emit FireWeapon /
 // ReleaseWeapon exactly once on the press / release edge. Game-thread only.
 bool g_wasFiring = false;
+
+// Rate-limited diagnostic: confirms held input is arriving and being applied.
+// Logged at most every ~100 frames while any input is held.
+void logHeldInputDiag(const ControlState::Snapshot& in) {
+    static int counter = 0;
+    const bool anything = in.move_left || in.move_right || in.aim_up ||
+                          in.aim_down || in.firing || in.select_weapon >= 0;
+    if (!anything) { counter = 0; return; }
+    if ((counter++ % 100) != 0) return;
+    Log::info("held input: L=" + std::to_string(in.move_left) +
+              " R=" + std::to_string(in.move_right) +
+              " U=" + std::to_string(in.aim_up) +
+              " D=" + std::to_string(in.aim_down) +
+              " fire=" + std::to_string(in.firing) +
+              " turnTeam=" + std::to_string(CTaskTurnGame::currentTurnTeam()));
+}
 
 // Translate the current held-input state into per-frame WA input messages.
 // Movement/aim are level-triggered (re-sent every frame while held); fire is
@@ -112,10 +139,11 @@ bool g_wasFiring = false;
 // game thread from onFrame().
 void applyHeldInput() {
     ControlState::Snapshot in = ControlState::read();
+    logHeldInputDiag(in);
 
     if (in.select_weapon >= 0) {
         // TODO(offsets): SelectWeapon likely needs the weapon id as payload;
-        // size-0 select may be a no-op. Left minimal until confirmed in-game.
+        // left minimal until confirmed in-game.
         sendInput(Constants::TaskMessage_SelectWeapon);
     }
 
