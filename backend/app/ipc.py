@@ -10,25 +10,25 @@ snapshot. The transport is chosen by config (use_mock_ipc), not platform.
 from __future__ import annotations
 
 import threading
-import time
 from abc import ABC, abstractmethod
+
+from .protocol import CommandMessage, GameSnapshot, TeamInfo, WormInfo
 
 
 class GameOfflineError(RuntimeError):
-    """The DLL's IPC server isn't reachable (game not running yet / closed)."""
-
-from .protocol import (
-    CommandMessage,
-    GameSnapshot,
-    QueryMessage,
-    TeamInfo,
-    TurnState,
-    WormInfo,
-)
+    """The DLL isn't reachable (game not running yet / closed) or hasn't sent a
+    frame yet."""
 
 
 class AbstractIpcTransport(ABC):
-    """Bidirectional channel to the DLL."""
+    """Channel to the DLL.
+
+    Push model: the DLL streams a game snapshot per frame; the transport keeps
+    the latest one. Commands go the other way (fire-and-forget).
+    """
+
+    def start(self) -> None:
+        """Begin receiving (spawn the reader thread). No-op for the mock."""
 
     @abstractmethod
     def send_command(self, cmd: CommandMessage) -> None:
@@ -36,38 +36,16 @@ class AbstractIpcTransport(ABC):
         ...
 
     @abstractmethod
-    def query_turn(self) -> TurnState:
-        """Ask the DLL for the current turn/worm state."""
+    def latest_state(self) -> GameSnapshot | None:
+        """The most recent snapshot pushed by the DLL, or None if offline / no
+        frame received yet."""
         ...
 
-    @abstractmethod
-    def query_state(self) -> GameSnapshot:
-        """Ask the DLL for the full monitor snapshot."""
-        ...
-
-    def query_state_raw(self) -> str:
-        """Diagnostic: the raw response text for a state query (default: the
-        parsed snapshot re-dumped; the TCP transport overrides with real bytes)."""
-        return self.query_state().model_dump_json()
+    def is_online(self) -> bool:
+        return self.latest_state() is not None
 
     @abstractmethod
     def close(self) -> None: ...
-
-
-def _turn_from_snapshot(snap: GameSnapshot) -> TurnState:
-    """Derive the narrow turn view from a full snapshot (matches the DLL)."""
-    turn = TurnState(round_active=snap.round_active)
-    if snap.turn_team is None:
-        return turn
-    turn.turn_team = str(snap.turn_team)
-    for team in snap.teams:
-        if team.team_number != snap.turn_team:
-            continue
-        for w in team.worms:
-            if w.worm == team.current_worm or w.active:
-                turn.pos_x, turn.pos_y, turn.weapon = w.pos_x, w.pos_y, w.weapon
-                return turn
-    return turn
 
 
 class MockIpcTransport(AbstractIpcTransport):
@@ -125,13 +103,9 @@ class MockIpcTransport(AbstractIpcTransport):
         with self._lock:
             self.sent.append(cmd)
 
-    def query_state(self) -> GameSnapshot:
+    def latest_state(self) -> GameSnapshot | None:
         with self._lock:
             return self._snapshot.model_copy(deep=True)
-
-    def query_turn(self) -> TurnState:
-        with self._lock:
-            return _turn_from_snapshot(self._snapshot)
 
     def set_turn(self, turn_team: int | None) -> None:
         """Test/dev helper to simulate a turn change (by team number)."""
@@ -151,108 +125,135 @@ class MockIpcTransport(AbstractIpcTransport):
 
 
 class TcpIpcTransport(AbstractIpcTransport):
-    """TCP client to the DLL's IPC server (127.0.0.1:<port>).
+    """Client to the DLL's push stream (connects to 127.0.0.1:<port>).
 
-    The DLL runs inside WA under Wine/Proton; a Windows named pipe isn't
-    reachable from the native-Linux backend, but Wine maps Winsock TCP onto the
-    host stack, so loopback TCP works across the boundary. This transport is
-    also plain cross-platform Python sockets, so it needs no OS-specific deps.
-
-    A single connection is reused and re-established if the game restarts.
+    The DLL (inside WA under Wine/Proton) listens and, on each game frame, sends
+    a snapshot line. A background reader thread connects, consumes the stream,
+    and keeps the latest snapshot. Commands go back on the same socket. Wine
+    maps Winsock TCP onto the host stack, so loopback works across the boundary.
     """
 
     def __init__(self, host: str = "127.0.0.1", port: int = 27099) -> None:
         self._host = host
         self._port = port
         self._lock = threading.RLock()
-        self._sock: "socket.socket | None" = None
-        self._offline = False  # currently unable to reach the DLL
-        self._last_offline_log = 0.0  # rate-limit the "waiting" message
+        self._sock: "socket.socket | None" = None  # write side (commands)
+        self._latest: GameSnapshot | None = None
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._offline_logged = False
 
-    def _ensure_open(self) -> None:
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(
+            target=self._reader_loop, name="wkwc-ipc-reader", daemon=True
+        )
+        self._thread.start()
+
+    def _reader_loop(self) -> None:
         import socket
 
-        if self._sock is not None:
-            return
-        s = socket.create_connection((self._host, self._port), timeout=2.0)
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self._sock = s
-
-    def _reset(self) -> None:
-        if self._sock is not None:
+        while not self._stop.is_set():
             try:
-                self._sock.close()
+                s = socket.create_connection((self._host, self._port), timeout=2.0)
+                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError:
+                if not self._offline_logged:
+                    print(
+                        f"wkWebControl: waiting for the WormKit plugin at "
+                        f"{self._host}:{self._port} (start WA with the plugin loaded)…"
+                    )
+                    self._offline_logged = True
+                self._set_latest(None)
+                self._stop.wait(1.0)  # retry the connection shortly
+                continue
+
+            print("wkWebControl: WormKit plugin connected.")
+            self._offline_logged = False
+            with self._lock:
+                self._sock = s
+            try:
+                self._consume(s)
             finally:
-                self._sock = None
-
-    def _read_line(self) -> bytes:
-        """Read until a newline (the DLL delimits each response with '\\n').
-        A state snapshot can span multiple recv() chunks, so accumulate."""
-        assert self._sock is not None
-        chunks = bytearray()
-        while b"\n" not in chunks:
-            data = self._sock.recv(8192)
-            if not data:
-                break
-            chunks.extend(data)
-        return bytes(chunks).split(b"\n", 1)[0]
-
-    def _note_offline(self) -> None:
-        """Log a concise 'waiting for the plugin' message at most once every
-        ~10s while the DLL is unreachable, instead of a traceback per request."""
-        now = time.monotonic()
-        if not self._offline or (now - self._last_offline_log) > 10.0:
-            print(
-                f"wkWebControl: waiting for the WormKit plugin at "
-                f"{self._host}:{self._port} (start Worms Armageddon with the "
-                f"plugin loaded)…"
-            )
-            self._last_offline_log = now
-        self._offline = True
-
-    def _request(self, payload: bytes, expect_reply: bool) -> bytes | None:
-        """Send a line and optionally read one reply line, reconnecting once if
-        the connection was dropped (e.g. game restarted). Raises GameOfflineError
-        (not a raw traceback) when the DLL's server can't be reached."""
-        with self._lock:
-            for attempt in (1, 2):
+                with self._lock:
+                    self._sock = None
+                self._set_latest(None)  # connection dropped -> offline
                 try:
-                    self._ensure_open()
-                    self._sock.sendall(payload)  # type: ignore[union-attr]
-                    reply = self._read_line() if expect_reply else None
-                    if self._offline:
-                        print("wkWebControl: WormKit plugin is online.")
-                        self._offline = False
-                    return reply
-                except OSError as e:
-                    self._reset()
-                    if attempt == 2:
-                        self._note_offline()
-                        raise GameOfflineError(str(e)) from None
-        return None
+                    s.close()
+                except OSError:
+                    pass
+                if not self._stop.is_set():
+                    print("wkWebControl: WormKit plugin disconnected.")
+
+    def _consume(self, s) -> None:
+        """Read newline-delimited snapshot lines until the socket closes."""
+        buf = bytearray()
+        s.settimeout(5.0)
+        while not self._stop.is_set():
+            try:
+                data = s.recv(16384)
+            except (TimeoutError, OSError):
+                break
+            if not data:
+                break  # DLL closed the connection
+            buf.extend(data)
+            # Keep only the most recent complete line: the DLL pushes every
+            # frame, so intermediate lines are already stale — don't bother
+            # parsing them all.
+            while b"\n" in buf:
+                line, _, rest = buf.partition(b"\n")
+                if b"\n" not in rest:
+                    # `line` is the last complete line; parse it and keep `rest`
+                    # (a partial next line) in the buffer.
+                    self._on_line(bytes(line))
+                    buf = bytearray(rest)
+                    break
+                # More complete lines follow; skip this stale one.
+                buf = bytearray(rest)
+
+    def _on_line(self, line: bytes) -> None:
+        if not line.strip():
+            return
+        try:
+            snap = GameSnapshot.from_wire(line)
+        except Exception:
+            return  # ignore a malformed/partial line; next frame recovers
+        self._set_latest(snap)
+
+    def _set_latest(self, snap: GameSnapshot | None) -> None:
+        with self._lock:
+            self._latest = snap
+
+    def latest_state(self) -> GameSnapshot | None:
+        with self._lock:
+            return self._latest
 
     def send_command(self, cmd: CommandMessage) -> None:
-        self._request(cmd.to_wire(), expect_reply=False)
-
-    def query_turn(self) -> TurnState:
-        line = self._request(QueryMessage(what="turn").to_wire(), expect_reply=True)
-        return TurnState.from_wire(line or b"{}")
-
-    def query_state(self) -> GameSnapshot:
-        return GameSnapshot.from_wire(self.query_state_raw().encode("utf-8"))
-
-    def query_state_raw(self) -> str:
-        line = self._request(QueryMessage(what="state").to_wire(), expect_reply=True)
-        return (line or b"{}").decode("utf-8", errors="replace")
+        with self._lock:
+            sock = self._sock
+        if sock is None:
+            raise GameOfflineError("no connection to the WormKit plugin")
+        try:
+            sock.sendall(cmd.to_wire())
+        except OSError as e:
+            raise GameOfflineError(str(e)) from None
 
     def close(self) -> None:
+        self._stop.set()
         with self._lock:
-            self._reset()
+            if self._sock is not None:
+                try:
+                    self._sock.close()
+                except OSError:
+                    pass
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
 
 
 def create_transport(use_mock: bool, host: str, port: int) -> AbstractIpcTransport:
     """Factory: the mock transport only when explicitly requested; otherwise the
-    real TCP transport (works on Linux too, since the DLL listens over TCP)."""
+    real TCP transport (works on Linux too, since the DLL streams over TCP)."""
     if use_mock:
         return MockIpcTransport()
     return TcpIpcTransport(host, port)

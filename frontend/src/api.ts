@@ -60,10 +60,6 @@ export interface GameSnapshot {
 // team number (as string, since JSON object keys are strings) -> email
 export type Mappings = Record<string, string>;
 
-// How often the Play/Monitor pages poll game state (ms). Fast enough to feel
-// live for a game controller.
-export const POLL_MS = 250;
-
 // WA stores positions as large fixed-point integers; show a compact value.
 export function fmtPos(raw: number): number {
   return Math.trunc(raw / 100000);
@@ -116,8 +112,22 @@ export const api = {
   },
 };
 
-/** Open the control WebSocket. Caller owns the socket lifecycle. */
-export function openControlSocket(): WebSocket {
+function wsUrl(path: string): string {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return new WebSocket(`${proto}://${window.location.host}/ws/control`);
+  return `${proto}://${window.location.host}${path}`;
 }
+
+/** Open the control WebSocket (browser -> backend commands). */
+export function openControlSocket(): WebSocket {
+  return new WebSocket(wsUrl("/ws/control"));
+}
+
+/** Open the live game-state WebSocket (backend -> browser snapshots). */
+export function openStateSocket(): WebSocket {
+  return new WebSocket(wsUrl("/ws/state"));
+}
+
+// Messages pushed on /ws/state.
+export type StateMessage =
+  | { type: "state"; snapshot: GameSnapshot }
+  | { type: "offline" };

@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.broadcaster import StateBroadcaster
 from app.ipc import MockIpcTransport
 from app.main import app
 from app.store import MappingStore
@@ -27,7 +28,9 @@ def client(tmp_path):
     with TestClient(app) as c:
         app.state.store = store
         app.state.ipc = ipc
-        app.state.last_game_id = 0  # reset new-game detection per test
+        # Rebind the broadcaster to the test's mock ipc + store so new-game
+        # detection (which lives in the broadcaster) uses the test doubles.
+        app.state.broadcaster = StateBroadcaster(ipc, on_new_game=lambda _gid: store.clear_all())
         c.store = store  # type: ignore[attr-defined]
         c.ipc = ipc  # type: ignore[attr-defined]
         yield c
@@ -145,6 +148,14 @@ def test_admin_list_and_clear_mappings(client):
     assert _claim(client, ALICE).status_code == 200
 
 
+def test_ws_state_sends_snapshot_on_connect(client):
+    with client.websocket_connect("/ws/state", headers=ALICE) as ws:
+        msg = ws.receive_json()
+    assert msg["type"] == "state"
+    assert msg["snapshot"]["num_teams"] == 2
+    assert msg["snapshot"]["turn_team"] == 0
+
+
 def test_admin_delete_single_mapping(client):
     assert _claim(client, ALICE).status_code == 200
     r = client.delete("/api/admin/mappings/0", headers=ADMIN)
@@ -153,13 +164,18 @@ def test_admin_delete_single_mapping(client):
 
 
 def test_new_game_auto_clears_claims(client):
-    # Alice claims team 0 in the current game.
+    # Alice claims team 0 in the current game (game_id=1).
     assert _claim(client, ALICE).status_code == 200
     assert client.get("/api/me", headers=ALICE).json()["team"] == 0
 
-    # A new game starts (game_id bumps). The next state-reading call clears
-    # claims so Alice is no longer mapped and can re-claim.
+    bc = app.state.broadcaster
+    # First observation of the current game_id establishes the baseline (no
+    # clear on first sight).
+    bc._detect_new_game(client.ipc.latest_state())  # type: ignore[attr-defined]
+    assert client.get("/api/me", headers=ALICE).json()["team"] == 0
+
+    # A new game starts (game_id bumps) -> broadcaster clears claims.
     client.ipc.new_game(game_id=2, turn_team=0)  # type: ignore[attr-defined]
-    client.get("/api/monitor", headers=ALICE)  # triggers new-game detection
+    bc._detect_new_game(client.ipc.latest_state())  # type: ignore[attr-defined]
     assert client.get("/api/me", headers=ALICE).json()["team"] is None
     assert _claim(client, ALICE).status_code == 200

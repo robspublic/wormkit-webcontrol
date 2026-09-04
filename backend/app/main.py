@@ -3,8 +3,8 @@
 Endpoints:
     GET    /api/health                       - liveness
     GET    /api/me                            - who am I + my claimed team
-    GET    /api/turn                          - current turn state (from DLL)
-    GET    /api/monitor                       - full game snapshot (from DLL)
+    GET    /api/monitor                       - latest game snapshot (REST fallback)
+    WS     /ws/state                          - live game-state stream (10Hz)
     POST   /api/claim                         - claim the current turn's team
     GET    /api/admin/mappings                - list team#->email mappings (admin)
     DELETE /api/admin/mappings/{team_number}  - remove one mapping        (admin)
@@ -32,6 +32,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 
 from .auth import require_admin, require_email
+from .broadcaster import StateBroadcaster
 from .config import settings
 from .ipc import AbstractIpcTransport, GameOfflineError, create_transport
 from .protocol import CommandMessage, ControlAction
@@ -40,15 +41,24 @@ from .store import MappingStore
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create shared resources (store + IPC transport) for the app's lifetime."""
+    """Create shared resources (store, IPC transport, broadcaster) for the app's
+    lifetime."""
     app.state.store = MappingStore(settings.db_path)
     app.state.ipc = create_transport(
         settings.use_mock_ipc, settings.game_host, settings.game_port
     )
-    app.state.last_game_id = 0  # for new-game detection (auto-clear claims)
+    app.state.ipc.start()  # spawn the DLL stream reader (no-op for the mock)
+
+    # The broadcaster owns new-game detection; clear claims when game_id changes.
+    def _on_new_game(_game_id: int) -> None:
+        app.state.store.clear_all()
+
+    app.state.broadcaster = StateBroadcaster(app.state.ipc, on_new_game=_on_new_game)
+    app.state.broadcaster.start()
     try:
         yield
     finally:
+        await app.state.broadcaster.stop()
         app.state.ipc.close()
         app.state.store.close()
 
@@ -75,17 +85,13 @@ def get_ipc() -> AbstractIpcTransport:
 
 
 def get_state():
-    """Fetch the game snapshot and, if the DLL reports a new game_id since we
-    last saw one, clear all team claims so everyone re-claims for the new game.
-    All state-reading paths go through here so the auto-clear is consistent."""
-    state = get_ipc().query_state()
-    last = getattr(app.state, "last_game_id", 0)
-    # game_id increments per game; a positive change means a fresh game loaded.
-    if state.game_id and state.game_id != last:
-        if last != 0:  # don't clear on the very first observation
-            get_store().clear_all()
-        app.state.last_game_id = state.game_id
-    return state
+    """The latest snapshot pushed by the DLL (cached by the transport). Raises
+    GameOfflineError if the game isn't connected / hasn't sent a frame yet.
+    New-game claim-clearing is handled centrally by the broadcaster."""
+    snap = get_ipc().latest_state()
+    if snap is None:
+        raise GameOfflineError("game not connected")
+    return snap
 
 
 # --------------------------------------------------------------------------- #
@@ -103,25 +109,31 @@ def me(email: str = Depends(require_email)) -> dict[str, object]:
     return {"email": email, "team": team, "is_admin": is_admin}
 
 
-@app.get("/api/turn")
-def turn(_: str = Depends(require_email)) -> dict[str, object]:
-    return get_ipc().query_turn().model_dump()
-
-
 @app.get("/api/monitor")
 def monitor(_: str = Depends(require_email)) -> dict[str, object]:
-    """Full read-only game snapshot for the monitor view."""
+    """Full read-only game snapshot (latest pushed by the DLL). Kept as a REST
+    fallback; live clients subscribe to /ws/state instead."""
     return get_state().model_dump()
 
 
-@app.get("/api/debug/raw-state")
-def debug_raw_state(_: str = Depends(require_admin)) -> dict[str, str]:
-    """Diagnostic: the exact bytes the DLL returned for a state query, with a
-    timestamp so repeated calls can be compared for staleness. Bypasses parsing
-    and the frontend to isolate DLL-vs-transport-vs-UI freezes."""
-    import time
-
-    return {"ts": str(time.time()), "raw": get_ipc().query_state_raw()}
+@app.websocket("/ws/state")
+async def ws_state(ws: WebSocket) -> None:
+    """Live game-state stream: the broadcaster pushes the latest snapshot to all
+    subscribers at a fixed rate. Read-only; requires an authenticated user."""
+    email = ws.headers.get(settings.auth_email_header, "").strip().lower()
+    if not email:
+        await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    bc: StateBroadcaster = app.state.broadcaster
+    await bc.connect(ws)
+    try:
+        # We don't expect inbound messages; just keep the socket open.
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        bc.disconnect(ws)
 
 
 # --------------------------------------------------------------------------- #

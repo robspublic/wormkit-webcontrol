@@ -1,49 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 
-import {
-  api,
-  openControlSocket,
-  POLL_MS,
-  type ControlAction,
-  type GameSnapshot,
-} from "../api";
+import { api, openControlSocket, type ControlAction } from "../api";
+import { useGameState } from "../useGameState";
 import type { AppContext } from "../App";
 
 export default function ControlPage() {
   const { me, refreshMe } = useOutletContext<AppContext>();
-  const [snap, setSnap] = useState<GameSnapshot | null>(null);
+  // Live game state via WebSocket; on a new game, re-fetch my claimed team.
+  const { snapshot: snap } = useGameState(refreshMe);
   const [connected, setConnected] = useState(false);
   const [lastReply, setLastReply] = useState<string>("");
   const [claimError, setClaimError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
-  const lastGameId = useRef<number | null>(null);
-
-  // Poll the game snapshot.
-  useEffect(() => {
-    let active = true;
-    const tick = () => {
-      api
-        .monitor()
-        .then((s) => {
-          if (!active) return;
-          setSnap(s);
-          // A new game clears claims server-side; re-fetch my team so the
-          // claim button reappears.
-          if (lastGameId.current !== null && s.game_id !== lastGameId.current) {
-            refreshMe();
-          }
-          lastGameId.current = s.game_id;
-        })
-        .catch(() => active && setSnap(null));
-    };
-    tick();
-    const id = setInterval(tick, POLL_MS);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, [refreshMe]);
 
   // Maintain the control WebSocket.
   useEffect(() => {

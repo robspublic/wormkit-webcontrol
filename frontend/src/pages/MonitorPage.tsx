@@ -1,31 +1,26 @@
 import { useEffect, useState } from "react";
 
-import { api, fmtPos, POLL_MS, type GameSnapshot, type Mappings } from "../api";
+import { api, fmtPos, type Mappings } from "../api";
+import { useGameState } from "../useGameState";
+
+// Team claims change rarely; poll them on a slow timer (state comes via WS).
+const MAPPINGS_POLL_MS = 2000;
 
 export default function MonitorPage() {
-  const [snap, setSnap] = useState<GameSnapshot | null>(null);
+  const { snapshot: snap, offline } = useGameState();
   const [mappings, setMappings] = useState<Mappings>({});
-  const [offline, setOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     const tick = () => {
       api
-        .monitor()
-        .then((s) => {
-          if (!active) return;
-          setSnap(s);
-          setOffline(false); // clear the "waiting" banner once data flows
-        })
-        .catch(() => active && setOffline(true));
-      api
         .listMappings()
         .then((m) => active && setMappings(m))
         .catch(() => {});
     };
     tick();
-    const id = setInterval(tick, POLL_MS);
+    const id = setInterval(tick, MAPPINGS_POLL_MS);
     return () => {
       active = false;
       clearInterval(id);

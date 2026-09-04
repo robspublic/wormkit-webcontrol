@@ -5,6 +5,7 @@
 #include "ControlState.h"
 #include "W2App.h"
 #include "Hooks.h"
+#include "IpcServer.h"
 #include "Log.h"
 #include "entities/CTask.h"
 #include "entities/CTaskTeam.h"
@@ -129,10 +130,13 @@ void applyCommand(CTaskWorm* worm, const ControlCommand& cmd) {
 
 } // namespace
 
-// Runs on the game thread (turn-game FrameFinish). Traverse the live tree and
-// publish a copied snapshot; the IPC thread only ever reads the published copy.
+// Runs on the game thread (turn-game FrameFinish). Traverse the live tree,
+// publish a copied snapshot, and push it to the connected backend (best-effort,
+// non-blocking).
 void ControlHooks::onFrame() {
-    publishSnapshot(buildSnapshot());
+    Protocol::GameSnapshot snap = buildSnapshot();
+    publishSnapshot(snap);
+    IpcServer::pushState(snap);
 
     // TODO(control): once the turn-holder worm is resolvable for writes, drain
     // ControlState and applyCommand() to it here (turn-gated by team).
