@@ -20,6 +20,10 @@ set -euo pipefail
 REPO="robspublic/wormkit-webcontrol"
 ARTIFACT_NAME="wkWebControl"
 WORKFLOW="build-dll.yml"
+# Files the artifact is expected to contain (cleared before re-download, since
+# `gh run download` won't overwrite existing files).
+DLL_NAME="wkWebControl.dll"
+INI_EXAMPLE="wkWebControl.ini.example"
 
 # Resolve the output dir relative to the repo root (this script lives in scripts/).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,6 +80,16 @@ fi
 
 # ---- download ----------------------------------------------------------------
 mkdir -p "${OUT_DIR}"
+
+# `gh run download` refuses to overwrite existing files, so clear any prior copy
+# of this artifact's contents first. We remove the specific files we know the
+# artifact contains rather than wiping the whole dir.
+for f in "${DLL_NAME}" "${INI_EXAMPLE}"; do
+  if [[ -e "${OUT_DIR}/${f}" ]]; then
+    rm -f -- "${OUT_DIR}/${f}"
+  fi
+done
+
 echo "Downloading '${ARTIFACT_NAME}' from run ${RUN_ID} into ${OUT_DIR}…"
 # gh extracts the artifact zip; --dir places files directly under OUT_DIR.
 gh run download "${RUN_ID}" --repo "${REPO}" --name "${ARTIFACT_NAME}" --dir "${OUT_DIR}"
