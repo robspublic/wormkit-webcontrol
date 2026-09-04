@@ -16,6 +16,7 @@ import {
   CELL_WIDTH,
   CELL_HEIGHT,
   PANEL_COLS,
+  PANEL_ROWS,
   type WeaponSlot,
 } from "../weapons";
 import weaponPanelUrl from "../assets/weapon-panel.png";
@@ -247,35 +248,58 @@ function WeaponPalette({
   const scale = 2;
   const tileW = CELL_WIDTH * scale;
   const tileH = CELL_HEIGHT * scale;
+  const gridW = PANEL_COLS * tileW;
+  const gridH = PANEL_ROWS * tileH;
 
   return (
-    <div
-      className="weapon-palette"
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${PANEL_COLS}, ${tileW}px)`,
-      }}
-    >
-      {WEAPON_SLOTS.map((slot: WeaponSlot) => {
-        const selected = selectedWeaponId === slot.weaponId;
-        return (
-          <button
-            key={`${slot.row}-${slot.col}`}
-            className={`weapon-tile${selected ? " selected" : ""}`}
-            title={slot.name}
-            aria-label={slot.name}
-            onClick={() => onSelect(slot.weaponId)}
-            style={{
-              width: tileW,
-              height: tileH,
-              backgroundImage: `url(${weaponPanelUrl})`,
-              backgroundRepeat: "no-repeat",
-              backgroundSize: `${PANEL_WIDTH * scale}px ${PANEL_HEIGHT * scale}px`,
-              backgroundPosition: `-${slot.col * tileW}px -${slot.row * tileH}px`,
-            }}
-          />
-        );
-      })}
+    <div className="weapon-palette">
+      {/* The grid area is contiguous (no gap/padding) so the alignment overlay
+          lines up exactly with tile/cell boundaries. */}
+      <div
+        className="weapon-grid"
+        style={{
+          position: "relative",
+          width: gridW,
+          height: gridH,
+          display: "grid",
+          gridTemplateColumns: `repeat(${PANEL_COLS}, ${tileW}px)`,
+          gridTemplateRows: `repeat(${PANEL_ROWS}, ${tileH}px)`,
+        }}
+      >
+        {WEAPON_SLOTS.map((slot: WeaponSlot) => {
+          const selected = selectedWeaponId === slot.weaponId;
+          return (
+            <button
+              key={`${slot.row}-${slot.col}`}
+              className={`weapon-tile${selected ? " selected" : ""}`}
+              title={slot.name}
+              aria-label={slot.name}
+              onClick={() => onSelect(slot.weaponId)}
+              style={{
+                width: tileW,
+                height: tileH,
+                backgroundImage: `url(${weaponPanelUrl})`,
+                backgroundRepeat: "no-repeat",
+                backgroundSize: `${PANEL_WIDTH * scale}px ${PANEL_HEIGHT * scale}px`,
+                backgroundPosition: `-${slot.col * tileW}px -${slot.row * tileH}px`,
+              }}
+            />
+          );
+        })}
+
+        {/* Alignment overlay: dark-green lines at every cell boundary. Purely
+            visual (pointer-events: none) so it doesn't block tile taps. */}
+        <div
+          className="weapon-grid-overlay"
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            backgroundImage: `repeating-linear-gradient(to right, #0a5c1e 0, #0a5c1e 1px, transparent 1px, transparent ${tileW}px), repeating-linear-gradient(to bottom, #0a5c1e 0, #0a5c1e 1px, transparent 1px, transparent ${tileH}px)`,
+          }}
+        />
+      </div>
     </div>
   );
 }

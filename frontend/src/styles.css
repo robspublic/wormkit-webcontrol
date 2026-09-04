@@ -263,12 +263,19 @@ body {
 
 /* Weapon palette (Tier-2 visual selector) */
 .weapon-palette {
-  gap: 2px;
+  display: flex;
   justify-content: center;
   margin: 10px 0;
   padding: 8px;
   background: #000;
   border-radius: 10px;
+}
+/* Contiguous grid area (no gap) so the alignment overlay lines up exactly.
+   A dark-green right/bottom border closes the outer edges the overlay's
+   leading lines don't cover. */
+.weapon-grid {
+  border-right: 1px solid #0a5c1e;
+  border-bottom: 1px solid #0a5c1e;
 }
 .weapon-tile {
   border: 1px solid transparent;
