@@ -40,7 +40,7 @@ inside the DLL, not just in the web layer.
 | `dll/`      | `wkWebControl` WormKit plugin (C++, PolyHook 2.0, pattern scanning) | CMake + MSVC (Windows / CI) |
 | `backend/`  | FastAPI app: admin API, control WebSocket, turn gating, pipe client | Python 3 + venv |
 | `frontend/` | Vite/React: admin page + player control page | Node |
-| `scripts/`  | Helpers to fetch CI build artifacts and deploy the DLL | bash + `gh` |
+| `scripts/`  | Helpers to run the dev stack and to fetch/deploy the DLL | bash + `gh` |
 | `reference/`| Cloned open-source WormKit modules used as implementation models | (read-only) |
 
 ## Reference modules
@@ -62,6 +62,23 @@ rely on MSVC inline asm, `__fastcall`, and naked functions that do not port to
 GCC/MinGW as-is). Because the host here is Linux, the DLL builds either on a
 Windows machine/VM or via a GitHub Actions Windows runner. The backend and
 frontend run natively on Linux.
+
+## Running the web app (dev) — `scripts/run-dev.sh`
+
+Starts everything the frontend needs: the FastAPI backend (uvicorn) and the Vite
+dev server, which proxies `/api` and `/ws` to the backend. On first run it
+creates the backend venv and installs frontend deps as needed. On Linux the
+backend defaults to the mock IPC transport, so this runs without the game.
+Ctrl-C stops the frontend and tears the backend down with it.
+
+```
+scripts/run-dev.sh                     # backend :8000, frontend :5173
+scripts/run-dev.sh --host              # expose the frontend on the LAN (phones)
+scripts/run-dev.sh --frontend-port 3000 --backend-port 8080
+```
+
+The Vite proxy target follows `--backend-port` automatically, so the two can't
+drift out of sync.
 
 ## Building and deploying the DLL
 
