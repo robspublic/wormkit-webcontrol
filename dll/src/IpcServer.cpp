@@ -53,11 +53,10 @@ namespace {
             Log::warn("unknown action: " + j.value("action", ""));
             return;
         }
-        ControlCommand cmd;
-        cmd.team = j.value("team", "");
-        cmd.action = *action;
-        cmd.value = j.value("value", 0);
-        ControlState::push(cmd);
+        ControlPhase phase = Protocol::parse_phase(j.value("phase", ""));
+        int value = j.value("value", 0);
+        // Update the held-input state; the game thread applies it each frame.
+        ControlState::apply(*action, phase, value);
     }
 
     // Serialize the full game snapshot to a JSON line. Field names must match

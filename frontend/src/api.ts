@@ -12,6 +12,17 @@ export type ControlAction =
   | "select_weapon"
   | "fire";
 
+// Held-input phase: pressing starts a held input, releasing ends it. Fire is a
+// charge (press) then launch (release). Must match the backend ControlPhase.
+export type ControlPhase = "press" | "release";
+
+// A control message sent on /ws/control.
+export interface ControlMessage {
+  action: ControlAction;
+  phase?: ControlPhase; // defaults to "press" on the backend
+  value?: number;
+}
+
 export interface Me {
   email: string;
   team: number | null; // claimed team number, or null

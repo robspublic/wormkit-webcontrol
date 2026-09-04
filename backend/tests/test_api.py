@@ -110,9 +110,12 @@ def test_control_allows_turn_holder(client):
         reply = ws.receive_json()
     assert reply["ok"] is True
     sent = client.ipc.sent  # type: ignore[attr-defined]
-    assert len(sent) == 1
+    # The press is forwarded; a matching release is auto-sent on disconnect
+    # (the client held the input without an explicit release).
     assert sent[0].team == "0"  # team number as string on the wire
     assert sent[0].action.value == "move_left"
+    assert sent[0].phase.value == "press"
+    assert sent[-1].phase.value == "release"
 
 
 def test_control_blocks_non_turn_holder(client):
@@ -135,6 +138,36 @@ def test_control_rejects_unknown_action(client):
     assert reply["ok"] is False
     assert "unknown action" in reply["error"]
     assert client.ipc.sent == []  # type: ignore[attr-defined]
+
+
+def test_control_forwards_phase(client):
+    # A press then a release are forwarded with their phase intact.
+    assert _claim(client, ALICE).status_code == 200
+    with client.websocket_connect("/ws/control", headers=ALICE) as ws:
+        ws.send_json({"action": "move_left", "phase": "press"})
+        assert ws.receive_json()["ok"] is True
+        ws.send_json({"action": "move_left", "phase": "release"})
+        assert ws.receive_json()["ok"] is True
+    sent = client.ipc.sent  # type: ignore[attr-defined]
+    assert [(c.action.value, c.phase.value) for c in sent] == [
+        ("move_left", "press"),
+        ("move_left", "release"),
+    ]
+
+
+def test_control_auto_releases_held_input_on_disconnect(client):
+    # Holding an input (press with no release) then dropping the socket should
+    # auto-emit a release so the worm doesn't keep moving.
+    assert _claim(client, ALICE).status_code == 200
+    with client.websocket_connect("/ws/control", headers=ALICE) as ws:
+        ws.send_json({"action": "fire", "phase": "press"})
+        assert ws.receive_json()["ok"] is True
+    # After the context manager closes the socket, the disconnect handler runs.
+    sent = client.ipc.sent  # type: ignore[attr-defined]
+    assert [(c.action.value, c.phase.value) for c in sent] == [
+        ("fire", "press"),
+        ("fire", "release"),
+    ]
 
 
 # --- Admin ------------------------------------------------------------------ #

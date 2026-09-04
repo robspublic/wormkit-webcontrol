@@ -35,7 +35,7 @@ from .auth import require_admin, require_email
 from .broadcaster import StateBroadcaster
 from .config import settings
 from .ipc import AbstractIpcTransport, GameOfflineError, create_transport
-from .protocol import CommandMessage, ControlAction
+from .protocol import CommandMessage, ControlAction, ControlPhase
 from .store import MappingStore
 
 
@@ -215,6 +215,28 @@ async def control(ws: WebSocket) -> None:
         return
 
     await ws.accept()
+
+    # Track which held inputs this client currently has pressed, and the team
+    # it was controlling, so we can auto-release them if the socket drops mid
+    # hold (otherwise a worm keeps walking / charging). select_weapon is a
+    # one-shot and never "held", so it's excluded.
+    held: set[ControlAction] = set()
+    held_team: int | None = None
+
+    def _release_held() -> None:
+        if held_team is None:
+            return
+        for act in held:
+            try:
+                get_ipc().send_command(
+                    CommandMessage(
+                        team=str(held_team), action=act, phase=ControlPhase.RELEASE
+                    )
+                )
+            except GameOfflineError:
+                pass
+        held.clear()
+
     try:
         while True:
             msg = await ws.receive_json()
@@ -225,9 +247,19 @@ async def control(ws: WebSocket) -> None:
                 await ws.send_json({"ok": False, "error": f"unknown action: {action_raw}"})
                 continue
 
+            phase_raw = msg.get("phase", ControlPhase.PRESS.value)
+            try:
+                phase = ControlPhase(phase_raw)
+            except ValueError:
+                await ws.send_json({"ok": False, "error": f"unknown phase: {phase_raw}"})
+                continue
+
             try:
                 allowed, turn_team = _is_users_turn(email)
                 if not allowed:
+                    # If the user just lost the turn while holding something,
+                    # release it so the worm doesn't keep moving.
+                    _release_held()
                     await ws.send_json(
                         {"ok": False, "error": "not your turn", "turn_team": turn_team}
                     )
@@ -238,13 +270,26 @@ async def control(ws: WebSocket) -> None:
                 cmd = CommandMessage(
                     team=str(turn_team),
                     action=action,
+                    phase=phase,
                     value=int(msg.get("value", 0)),
                 )
                 get_ipc().send_command(cmd)
-                await ws.send_json({"ok": True, "action": action.value})
+
+                # Track held state for auto-release (fire and the directions).
+                if action is not ControlAction.SELECT_WEAPON:
+                    held_team = turn_team
+                    if phase is ControlPhase.PRESS:
+                        held.add(action)
+                    else:
+                        held.discard(action)
+
+                await ws.send_json(
+                    {"ok": True, "action": action.value, "phase": phase.value}
+                )
             except GameOfflineError:
                 await ws.send_json({"ok": False, "error": "game offline"})
     except WebSocketDisconnect:
+        _release_held()
         return
 
 

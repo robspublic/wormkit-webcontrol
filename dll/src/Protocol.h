@@ -10,21 +10,21 @@
 // Wire contract shared with the FastAPI backend (backend/app/protocol.py).
 // Keep these constants in sync with the Python side:
 //   - action strings  <-> ControlAction StrEnum values
-//   - field names     <-> CommandMessage / QueryMessage / TurnState fields
+//   - phase strings    <-> ControlPhase StrEnum values
+//   - field names     <-> CommandMessage / GameSnapshot fields
 //
 // Transport: newline-delimited JSON over TCP loopback (127.0.0.1:27099).
 //
-//   Backend -> DLL:
-//     {"type":"cmd","team":"Red","action":"move_left","value":0}
-//     {"type":"query","what":"turn"}
+//   Backend -> DLL (fire-and-forget held-input edges):
+//     {"type":"cmd","team":"Red","action":"move_left","phase":"press","value":0}
+//     {"type":"cmd","team":"Red","action":"move_left","phase":"release"}
 //
-//   DLL -> Backend (query response):
-//     {"turn_team":"Red","pos_x":1234,"pos_y":567,"weapon":3,"round_active":true}
+//   DLL -> Backend (push stream, one snapshot line per game logic frame):
+//     {"game_id":3,"round_active":true,"num_teams":2,"teams":[ ... ], ...}
 namespace Protocol {
 
     // Message type discriminator ("type" field).
     inline constexpr const char* kTypeCommand = "cmd";
-    inline constexpr const char* kTypeQuery = "query";
 
     // Action string values (must equal Python ControlAction values).
     inline constexpr const char* kActionMoveLeft = "move_left";
@@ -34,8 +34,17 @@ namespace Protocol {
     inline constexpr const char* kActionSelectWeapon = "select_weapon";
     inline constexpr const char* kActionFire = "fire";
 
+    // Phase string values (must equal Python ControlPhase values). A missing
+    // phase defaults to "press" (see parse_phase).
+    inline constexpr const char* kPhasePress = "press";
+    inline constexpr const char* kPhaseRelease = "release";
+
     // Map an action string to the internal enum. Returns nullopt if unknown.
     std::optional<ControlAction> parse_action(const std::string& s);
+
+    // Map a phase string to the internal enum. An empty or unknown string
+    // defaults to Press (so older/simple clients still work).
+    ControlPhase parse_phase(const std::string& s);
 
     // ----- Read-only monitor snapshot --------------------------------------
     // A point-in-time view of game state, built on the game thread and read by

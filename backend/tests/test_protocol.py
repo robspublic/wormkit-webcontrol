@@ -12,6 +12,7 @@ import json
 from app.protocol import (
     CommandMessage,
     ControlAction,
+    ControlPhase,
     GameSnapshot,
     TeamInfo,
     WormInfo,
@@ -27,16 +28,44 @@ EXPECTED_ACTIONS = {
     "fire",
 }
 
+# Phase strings must equal the DLL's Protocol::kPhase* constants.
+EXPECTED_PHASES = {"press", "release"}
+
 
 def test_action_values_match_contract():
     assert {a.value for a in ControlAction} == EXPECTED_ACTIONS
+
+
+def test_phase_values_match_contract():
+    assert {p.value for p in ControlPhase} == EXPECTED_PHASES
 
 
 def test_command_wire_shape():
     line = CommandMessage(team="Red", action=ControlAction.MOVE_LEFT, value=0).to_wire()
     assert line.endswith(b"\n")
     obj = json.loads(line)
-    assert obj == {"type": "cmd", "team": "Red", "action": "move_left", "value": 0}
+    # phase defaults to "press" so simple/older clients still work.
+    assert obj == {
+        "type": "cmd",
+        "team": "Red",
+        "action": "move_left",
+        "phase": "press",
+        "value": 0,
+    }
+
+
+def test_command_release_wire_shape():
+    line = CommandMessage(
+        team="0", action=ControlAction.FIRE, phase=ControlPhase.RELEASE
+    ).to_wire()
+    obj = json.loads(line)
+    assert obj == {
+        "type": "cmd",
+        "team": "0",
+        "action": "fire",
+        "phase": "release",
+        "value": 0,
+    }
 
 
 # --- Monitor snapshot (push stream) contract ------------------------------- #

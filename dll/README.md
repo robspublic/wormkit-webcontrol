@@ -77,9 +77,11 @@ requiring reverse-engineering is marked `TODO(offsets)`:
 - `W2App` — capture GameGlobal / DdMain during app init.
 - `Constants.h` — real TaskMessage / ClassType / Weapon ids.
 - `entities/*` — confirm field offsets and vtable slot indices.
-- `ControlHooks` — resolve the active turn-holder worm; drive real input.
-  (The IPC read/write loop, JSON, and turn-snapshot plumbing are done; only the
-  game-memory `TODO(offsets)` inside `onFrame()` / `applyCommand()` remain.)
+- `ControlHooks` / `TaskMessageFifo` — control input is injected as real WA
+  input messages (MoveLeft/MoveRight/MoveUp/MoveDown/FireWeapon/ReleaseWeapon)
+  enqueued into the input FIFO at `*(ddGame+0x40)` via `callTaskMessageSend`;
+  the turn-game's `ProcessInput` routes them to the active worm. Message target
+  and payload size (currently 0) are the remaining in-game `TODO(offsets)`.
 
 `IpcServer` (TCP read loop + JSON parse/serialize) is complete.
 

@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 
-import { api, openControlSocket, type ControlAction } from "../api";
+import {
+  api,
+  openControlSocket,
+  type ControlAction,
+  type ControlPhase,
+} from "../api";
 import { useGameState } from "../useGameState";
 import type { AppContext } from "../App";
 
@@ -14,6 +19,41 @@ export default function ControlPage() {
   const [claimError, setClaimError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
+  // Actions the user is currently holding, so we can force-release them if the
+  // turn is lost or the component unmounts (otherwise the worm keeps moving).
+  const heldRef = useRef<Set<ControlAction>>(new Set());
+
+  const send = useCallback(
+    (action: ControlAction, phase: ControlPhase = "press", value = 0) => {
+      const ws = socketRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action, phase, value }));
+      }
+    },
+    [],
+  );
+
+  // Press/release a held input, tracking it so we can auto-release later.
+  const press = useCallback(
+    (action: ControlAction) => {
+      if (heldRef.current.has(action)) return;
+      heldRef.current.add(action);
+      send(action, "press");
+    },
+    [send],
+  );
+  const release = useCallback(
+    (action: ControlAction) => {
+      if (!heldRef.current.has(action)) return;
+      heldRef.current.delete(action);
+      send(action, "release");
+    },
+    [send],
+  );
+  const releaseAll = useCallback(() => {
+    for (const action of [...heldRef.current]) release(action);
+  }, [release]);
+
   // Maintain the control WebSocket.
   useEffect(() => {
     const ws = openControlSocket();
@@ -21,8 +61,11 @@ export default function ControlPage() {
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
     ws.onmessage = (ev) => setLastReply(ev.data);
-    return () => ws.close();
-  }, []);
+    return () => {
+      releaseAll();
+      ws.close();
+    };
+  }, [releaseAll]);
 
   const myTeam = me?.team ?? null;
   const turnTeam = snap?.turn_team ?? null;
@@ -31,8 +74,12 @@ export default function ControlPage() {
   // It's my turn when I've claimed the team that currently holds the turn.
   const isMyTurn = myTeam !== null && turnTeam !== null && myTeam === turnTeam;
 
-  // Show the claim button when I have no team yet and a team is currently
-  // taking its turn (that's the team I'd be claiming).
+  // If the turn is lost (or the round ends) while holding a button, release it
+  // so a worm doesn't keep walking/charging after control is gone.
+  useEffect(() => {
+    if (!isMyTurn) releaseAll();
+  }, [isMyTurn, releaseAll]);
+
   const canClaim = myTeam === null && roundActive && turnTeam !== null;
 
   async function onClaim() {
@@ -42,13 +89,6 @@ export default function ControlPage() {
       refreshMe();
     } catch (e) {
       setClaimError(String(e));
-    }
-  }
-
-  function send(action: ControlAction, value = 0) {
-    const ws = socketRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action, value }));
     }
   }
 
@@ -77,30 +117,34 @@ export default function ControlPage() {
 
       <fieldset disabled={!isMyTurn} className="pad">
         <div className="row">
-          <button className="btn move" onClick={() => send("move_left")}>
+          <HoldButton className="btn move" action="move_left" press={press} release={release}>
             ◀ Left
-          </button>
-          <button className="btn move" onClick={() => send("move_right")}>
+          </HoldButton>
+          <HoldButton className="btn move" action="move_right" press={press} release={release}>
             Right ▶
-          </button>
+          </HoldButton>
         </div>
 
         <div className="row">
-          <button className="btn aim" onClick={() => send("aim_up", 1)}>
+          <HoldButton className="btn aim" action="aim_up" press={press} release={release}>
             ▲ Aim up
-          </button>
-          <button className="btn aim" onClick={() => send("aim_down", 1)}>
+          </HoldButton>
+          <HoldButton className="btn aim" action="aim_down" press={press} release={release}>
             ▼ Aim down
-          </button>
+          </HoldButton>
         </div>
 
         <div className="row">
-          <button className="btn weapon" onClick={() => send("select_weapon", 0)}>
+          {/* Weapon select is a one-shot, not a held input. */}
+          <button
+            className="btn weapon"
+            onClick={() => send("select_weapon", "press", 0)}
+          >
             Change weapon
           </button>
-          <button className="btn fire" onClick={() => send("fire")}>
-            🔥 Fire
-          </button>
+          <HoldButton className="btn fire" action="fire" press={press} release={release}>
+            🔥 Fire (hold)
+          </HoldButton>
         </div>
       </fieldset>
 
@@ -109,5 +153,41 @@ export default function ControlPage() {
         {lastReply && <span className="reply">{lastReply}</span>}
       </div>
     </div>
+  );
+}
+
+// A button that sends a "press" while held and a "release" when let go. Uses
+// pointer events so it works for mouse and touch, and releases on pointerleave
+// / pointercancel so dragging off the button (or a canceled touch) can't leave
+// an input stuck on. Long-press context menu and text selection are suppressed.
+function HoldButton({
+  action,
+  press,
+  release,
+  className,
+  children,
+}: {
+  action: ControlAction;
+  press: (a: ControlAction) => void;
+  release: (a: ControlAction) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      className={className}
+      onPointerDown={(e) => {
+        // Keep receiving pointerup even if the finger/cursor slides off.
+        e.currentTarget.setPointerCapture(e.pointerId);
+        press(action);
+      }}
+      onPointerUp={() => release(action)}
+      onPointerCancel={() => release(action)}
+      onLostPointerCapture={() => release(action)}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{ touchAction: "none", userSelect: "none" }}
+    >
+      {children}
+    </button>
   );
 }

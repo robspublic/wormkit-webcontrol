@@ -1,20 +1,29 @@
 #include "ControlState.h"
 
-void ControlState::push(const ControlCommand& cmd) {
+void ControlState::apply(ControlAction action, ControlPhase phase, int value) {
+    const bool held = (phase == ControlPhase::Press);
     std::lock_guard<std::mutex> lock(mutex);
-    queue.push(cmd);
+    switch (action) {
+        case ControlAction::MoveLeft:   state.move_left = held; break;
+        case ControlAction::MoveRight:  state.move_right = held; break;
+        case ControlAction::AimUp:      state.aim_up = held; break;
+        case ControlAction::AimDown:    state.aim_down = held; break;
+        case ControlAction::Fire:       state.firing = held; break;
+        case ControlAction::SelectWeapon:
+            // One-shot: only act on the press edge.
+            if (held) state.select_weapon = value;
+            break;
+    }
 }
 
-std::optional<ControlCommand> ControlState::pop() {
+ControlState::Snapshot ControlState::read() {
     std::lock_guard<std::mutex> lock(mutex);
-    if (queue.empty()) return std::nullopt;
-    ControlCommand cmd = queue.front();
-    queue.pop();
-    return cmd;
+    Snapshot copy = state;
+    state.select_weapon = -1;  // consume the one-shot
+    return copy;
 }
 
 void ControlState::clear() {
     std::lock_guard<std::mutex> lock(mutex);
-    std::queue<ControlCommand> empty;
-    std::swap(queue, empty);
+    state = Snapshot{};
 }

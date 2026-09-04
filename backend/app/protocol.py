@@ -29,12 +29,24 @@ class ControlAction(StrEnum):
     FIRE = "fire"
 
 
+class ControlPhase(StrEnum):
+    """Whether a command is the start (press) or end (release) of a held input.
+
+    Movement and aim are held while the button is down; fire is a charge on
+    press and a launch on release. Values must match the DLL's parse_phase.
+    """
+
+    PRESS = "press"
+    RELEASE = "release"
+
+
 class CommandMessage(BaseModel):
     """A control command targeting a specific team."""
 
     type: str = Field(default="cmd", frozen=True)
     team: str
     action: ControlAction
+    phase: ControlPhase = ControlPhase.PRESS
     value: int = 0
 
     def to_wire(self) -> bytes:

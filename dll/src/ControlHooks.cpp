@@ -7,6 +7,7 @@
 #include "Hooks.h"
 #include "IpcServer.h"
 #include "Log.h"
+#include "TaskMessageFifo.h"
 #include "entities/CTask.h"
 #include "entities/CTaskTeam.h"
 #include "entities/CTaskTurnGame.h"
@@ -89,55 +90,77 @@ Protocol::GameSnapshot buildSnapshot() {
     return snap;
 }
 
-// Apply a single command to the given (turn-holding) worm by writing its
-// fields. All writes happen on the game thread from the frame hook.
-// (Used by the control path, wired later.)
-void applyCommand(CTaskWorm* worm, const ControlCommand& cmd) {
-    switch (cmd.action) {
-        case ControlAction::MoveRight:
-            worm->facing_direction_dword1A8 = +1; // TODO(offsets): confirm sign
-            break;
-        case ControlAction::MoveLeft:
-            worm->facing_direction_dword1A8 = -1;
-            break;
-        case ControlAction::AimUp:
-            worm->shooting_angle_dword270 += cmd.value; // TODO: clamp
-            break;
-        case ControlAction::AimDown:
-            worm->shooting_angle_dword270 -= cmd.value;
-            break;
-        case ControlAction::SelectWeapon:
-            worm->selected_weapon_unknown170 = cmd.value;
-            worm->selected_weapon_entry_ptr36C = 0;
-            break;
-        case ControlAction::Fire:
-            // TODO(control): drive the fire input.
-            break;
+// Enqueue one input message into the game's input FIFO (*(ddGame+0x40)). The
+// turn-game's ProcessInput then applies it to the active worm on this frame.
+// A size-0 payload matches how the game queues discrete directional/fire input
+// events. No-op (safe) if we're not in a game.
+void sendInput(Constants::TaskMessage mtype) {
+    DWORD ddGame = W2App::getAddrDdGame();
+    if (ddGame == 0) return;
+    auto* inputFifo = *(TaskMessageFifo**)(ddGame + 0x40);
+    if (inputFifo == nullptr) return;
+    TaskMessageFifo::callTaskMessageSend(inputFifo, 0, mtype, nullptr);
+}
+
+// Was the fire button held on the previous frame? Used to emit FireWeapon /
+// ReleaseWeapon exactly once on the press / release edge. Game-thread only.
+bool g_wasFiring = false;
+
+// Translate the current held-input state into per-frame WA input messages.
+// Movement/aim are level-triggered (re-sent every frame while held); fire is
+// edge-triggered (FireWeapon on press, ReleaseWeapon on release). Runs on the
+// game thread from onFrame().
+void applyHeldInput() {
+    ControlState::Snapshot in = ControlState::read();
+
+    if (in.select_weapon >= 0) {
+        // TODO(offsets): SelectWeapon likely needs the weapon id as payload;
+        // size-0 select may be a no-op. Left minimal until confirmed in-game.
+        sendInput(Constants::TaskMessage_SelectWeapon);
     }
+
+    // Movement + aim: assert each held direction this frame.
+    if (in.move_left)  sendInput(Constants::TaskMessage_MoveLeft);
+    if (in.move_right) sendInput(Constants::TaskMessage_MoveRight);
+    if (in.aim_up)     sendInput(Constants::TaskMessage_MoveUp);
+    if (in.aim_down)   sendInput(Constants::TaskMessage_MoveDown);
+
+    // Fire: charge on the press edge, launch on the release edge.
+    if (in.firing && !g_wasFiring) {
+        sendInput(Constants::TaskMessage_FireWeapon);
+    } else if (!in.firing && g_wasFiring) {
+        sendInput(Constants::TaskMessage_ReleaseWeapon);
+    }
+    g_wasFiring = in.firing;
 }
 
 } // namespace
 
 // Runs on the game thread (turn-game FrameFinish). Traverse the live tree,
-// publish a copied snapshot, and push it to the connected backend (best-effort,
-// non-blocking).
+// publish a copied snapshot, push it to the connected backend, then apply any
+// held web input for this frame.
 void ControlHooks::onFrame() {
     Protocol::GameSnapshot snap = buildSnapshot();
     publishSnapshot(snap);
     IpcServer::pushState(snap);
 
-    // TODO(control): once the turn-holder worm is resolvable for writes, drain
-    // ControlState and applyCommand() to it here (turn-gated by team).
-    (void)&applyCommand;
+    // Only drive input while a game is live. Turn-gating is enforced by the
+    // backend (claim + is-users-turn) before commands ever reach us, and the
+    // game's ProcessInput naturally routes input to the current turn-holder.
+    if (snap.round_active) {
+        applyHeldInput();
+    }
 }
 
 void ControlHooks::install() {
     // onFrame() is invoked from CTaskTurnGame's FrameFinish hook (game thread).
-    Log::info("ControlHooks::install (snapshot builder ready)");
+    Log::info("ControlHooks::install (snapshot builder + input ready)");
 }
 
 void ControlHooks::onGameTornDown() {
     CTaskTurnGame::clearTurn();
+    ControlState::clear();  // drop any held input from the finished game
+    g_wasFiring = false;
     // Clear the published snapshot so a between-games query reports "no game"
     // rather than the last game's stale data.
     std::lock_guard<std::mutex> lock(g_snapshotMutex);

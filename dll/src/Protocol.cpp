@@ -12,4 +12,9 @@ std::optional<ControlAction> parse_action(const std::string& s) {
     return std::nullopt;
 }
 
+ControlPhase parse_phase(const std::string& s) {
+    if (s == kPhaseRelease) return ControlPhase::Release;
+    return ControlPhase::Press;  // default: empty/unknown/"press"
+}
+
 } // namespace Protocol
