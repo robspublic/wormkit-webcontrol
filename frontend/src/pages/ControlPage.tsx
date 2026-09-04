@@ -9,6 +9,16 @@ import {
 } from "../api";
 import { useGameState } from "../useGameState";
 import { useTurnVibration } from "../useTurnVibration";
+import {
+  WEAPON_SLOTS,
+  PANEL_WIDTH,
+  PANEL_HEIGHT,
+  CELL_WIDTH,
+  CELL_HEIGHT,
+  PANEL_COLS,
+  type WeaponSlot,
+} from "../weapons";
+import weaponPanelUrl from "../assets/weapon-panel.png";
 import type { AppContext } from "../App";
 
 export default function ControlPage() {
@@ -18,6 +28,7 @@ export default function ControlPage() {
   const [connected, setConnected] = useState(false);
   const [lastReply, setLastReply] = useState<string>("");
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [showWeapons, setShowWeapons] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 
   // Actions the user is currently holding, so we can force-release them if the
@@ -77,6 +88,14 @@ export default function ControlPage() {
 
   // Buzz the phone when it becomes my turn (no-op on unsupported browsers).
   useTurnVibration(isMyTurn);
+
+  // The weapon my active worm currently has selected (for highlighting the
+  // palette). Best-effort: the turn-holder team's current/active worm.
+  const myTeamInfo = snap?.teams.find((t) => t.team_number === myTeam) ?? null;
+  const selectedWeaponId =
+    myTeamInfo?.worms.find((w) => w.active)?.weapon ??
+    myTeamInfo?.worms[0]?.weapon ??
+    null;
 
   // If the turn is lost (or the round ends) while holding a button, release it
   // so a worm doesn't keep walking/charging after control is gone.
@@ -142,14 +161,25 @@ export default function ControlPage() {
           {/* Weapon select and jump are one-shots, not held inputs. */}
           <button
             className="btn weapon"
-            onClick={() => send("select_weapon", "press", 0)}
+            onClick={() => setShowWeapons((s) => !s)}
+            aria-expanded={showWeapons}
           >
-            Change weapon
+            {showWeapons ? "Close weapons" : "Weapons"}
           </button>
           <button className="btn jump" onClick={() => send("jump", "press")}>
             ⤒ Jump
           </button>
         </div>
+
+        {showWeapons && (
+          <WeaponPalette
+            selectedWeaponId={selectedWeaponId}
+            onSelect={(weaponId) => {
+              send("select_weapon", "press", weaponId);
+              setShowWeapons(false);
+            }}
+          />
+        )}
 
         <div className="row">
           <HoldButton className="btn fire" action="fire" press={press} release={release}>
@@ -199,5 +229,53 @@ function HoldButton({
     >
       {children}
     </button>
+  );
+}
+
+// The weapon palette: a grid of tiles cut from the WA weapon-panel sprite sheet
+// via CSS background-position. Tapping a tile selects that weapon. Tiles are
+// scaled up from the native 36x29 cell for touch; background-size is scaled to
+// match so the sprite lines up.
+function WeaponPalette({
+  selectedWeaponId,
+  onSelect,
+}: {
+  selectedWeaponId: number | null;
+  onSelect: (weaponId: number) => void;
+}) {
+  // Render tiles at 2x the native cell so they're comfortably tappable.
+  const scale = 2;
+  const tileW = CELL_WIDTH * scale;
+  const tileH = CELL_HEIGHT * scale;
+
+  return (
+    <div
+      className="weapon-palette"
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${PANEL_COLS}, ${tileW}px)`,
+      }}
+    >
+      {WEAPON_SLOTS.map((slot: WeaponSlot) => {
+        const selected = selectedWeaponId === slot.weaponId;
+        return (
+          <button
+            key={`${slot.row}-${slot.col}`}
+            className={`weapon-tile${selected ? " selected" : ""}`}
+            title={slot.name}
+            aria-label={slot.name}
+            onClick={() => onSelect(slot.weaponId)}
+            style={{
+              width: tileW,
+              height: tileH,
+              backgroundImage: `url(${weaponPanelUrl})`,
+              backgroundRepeat: "no-repeat",
+              backgroundSize: `${PANEL_WIDTH * scale}px ${PANEL_HEIGHT * scale}px`,
+              backgroundPosition: `-${slot.col * tileW}px -${slot.row * tileH}px`,
+            }}
+          />
+        );
+      })}
+    </div>
   );
 }

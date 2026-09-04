@@ -260,3 +260,29 @@ body {
   color: var(--muted);
   text-align: center;
 }
+
+/* Weapon palette (Tier-2 visual selector) */
+.weapon-palette {
+  gap: 2px;
+  justify-content: center;
+  margin: 10px 0;
+  padding: 8px;
+  background: #000;
+  border-radius: 10px;
+}
+.weapon-tile {
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  /* The source is small pixel art; keep edges crisp when scaled up. */
+  image-rendering: pixelated;
+  touch-action: manipulation;
+}
+.weapon-tile:active {
+  transform: scale(0.95);
+}
+.weapon-tile.selected {
+  border-color: var(--accent, #ffd24a);
+  box-shadow: 0 0 0 1px var(--accent, #ffd24a);
+}

@@ -95,19 +95,24 @@ Protocol::GameSnapshot buildSnapshot() {
 // This is the game's real input routing: the turn-game applies the input to
 // its active worm. No-op (safe) if we're not in a game.
 //
-// The payload is a 1024-byte zeroed buffer with the leading DWORD set to the
+// The payload is a 1024-byte zeroed buffer. Its leading DWORD is `payload` when
+// given (>= 0) -- used to carry the weapon id for SelectWeapon -- otherwise the
 // active team number, mirroring how the reference builds StartTurn/team
 // messages. For simple directional/fire input the game may ignore the payload,
 // but sending a correctly sized zeroed buffer matches the reference and avoids
 // the "size-0 gets dropped" failure mode.
-void sendInput(Constants::TaskMessage mtype) {
+void sendInput(Constants::TaskMessage mtype, int payload = -1) {
     auto* tg = (CTaskTurnGame*)W2App::getAddrTurnGame();
     if (tg == nullptr) return;
 
     unsigned char buff[1024];
     memset(buff, 0, sizeof(buff));
-    const int activeTeam = CTaskTurnGame::currentTurnTeam();
-    if (activeTeam >= 0) *(DWORD*)buff = (DWORD)activeTeam;
+    if (payload >= 0) {
+        *(DWORD*)buff = (DWORD)payload;
+    } else {
+        const int activeTeam = CTaskTurnGame::currentTurnTeam();
+        if (activeTeam >= 0) *(DWORD*)buff = (DWORD)activeTeam;
+    }
 
     tg->vtable8_HandleMessage(tg, mtype, sizeof(buff), buff);
 }
@@ -126,9 +131,10 @@ void applyHeldInput() {
     if (in.jump) sendInput(Constants::TaskMessage_Jump);
 
     if (in.select_weapon >= 0) {
-        // TODO(offsets): SelectWeapon likely needs the weapon id as payload;
-        // left minimal until confirmed in-game.
-        sendInput(Constants::TaskMessage_SelectWeapon);
+        // Carry the weapon id as the payload's leading DWORD. TODO(in-game):
+        // confirm whether SelectWeapon wants the WA weapon-enum id (what the
+        // web UI sends) or a 0-based panel index; adjust here if off by one.
+        sendInput(Constants::TaskMessage_SelectWeapon, in.select_weapon);
     }
 
     // Movement + aim: assert each held direction this frame.
