@@ -32,16 +32,12 @@ public:
     DWORD num_elements_dword18;   // number of queued elements
 
     // Enqueue a message of `msize` payload bytes (may be 0) of `data` into
-    // `fifo`. Wraps the game's own TaskMessageSend routine (resolved by scan).
+    // `fifo`. Wraps the game's own TaskMessageSend routine (resolved by scan),
+    // which grows the FIFO's backing storage as needed.
     static DWORD callTaskMessageSend(TaskMessageFifo* fifo, DWORD msize,
                                      Constants::TaskMessage mtype, void* data);
 
-    // Ensure the fifo has room for a message of `tsize` bytes. Wraps the game's
-    // FifoMakeSpace routine (TaskMessageSend calls this internally, so callers
-    // normally don't need it, but the send helper relies on both being scanned).
-    static int callFifoMakeSpace(TaskMessageFifo* fifo, size_t tsize);
-
-    // Resolve the game functions this class wraps. Must run once at startup.
+    // Resolve the game function this class wraps. Must run once at startup.
     static void install();
 };
 
