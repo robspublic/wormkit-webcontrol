@@ -14,6 +14,7 @@ enum class ControlAction {
     AimDown,
     SelectWeapon,
     Fire,
+    Jump,
 };
 
 // Whether a command is the start (press) or end (release) of a held input.
@@ -41,6 +42,7 @@ public:
         bool aim_down = false;
         bool firing = false;      // fire button currently held (charging)
         int  select_weapon = -1;  // one-shot weapon id to select, or -1
+        bool jump = false;        // one-shot: jump requested this read
     };
 
     // Apply a press/release edge from the IPC thread. `value` carries the

@@ -26,6 +26,7 @@ EXPECTED_ACTIONS = {
     "aim_down",
     "select_weapon",
     "fire",
+    "jump",
 }
 
 # Phase strings must equal the DLL's Protocol::kPhase* constants.

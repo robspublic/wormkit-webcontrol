@@ -25,6 +25,7 @@ namespace Constants {
         TaskMessage_MoveRight     = 31,
         TaskMessage_MoveUp        = 32,  // aim up
         TaskMessage_MoveDown      = 33,  // aim down
+        TaskMessage_Jump          = 36,  // jump (one-shot; JumpUp=37 = backflip)
         TaskMessage_FireWeapon    = 38,
         TaskMessage_ReleaseWeapon = 39,
         TaskMessage_SelectWeapon  = 51,

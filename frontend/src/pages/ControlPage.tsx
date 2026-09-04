@@ -135,13 +135,19 @@ export default function ControlPage() {
         </div>
 
         <div className="row">
-          {/* Weapon select is a one-shot, not a held input. */}
+          {/* Weapon select and jump are one-shots, not held inputs. */}
           <button
             className="btn weapon"
             onClick={() => send("select_weapon", "press", 0)}
           >
             Change weapon
           </button>
+          <button className="btn jump" onClick={() => send("jump", "press")}>
+            ⤒ Jump
+          </button>
+        </div>
+
+        <div className="row">
           <HoldButton className="btn fire" action="fire" press={press} release={release}>
             🔥 Fire (hold)
           </HoldButton>

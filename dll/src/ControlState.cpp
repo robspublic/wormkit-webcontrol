@@ -13,13 +13,18 @@ void ControlState::apply(ControlAction action, ControlPhase phase, int value) {
             // One-shot: only act on the press edge.
             if (held) state.select_weapon = value;
             break;
+        case ControlAction::Jump:
+            // One-shot: only act on the press edge.
+            if (held) state.jump = true;
+            break;
     }
 }
 
 ControlState::Snapshot ControlState::read() {
     std::lock_guard<std::mutex> lock(mutex);
     Snapshot copy = state;
-    state.select_weapon = -1;  // consume the one-shot
+    state.select_weapon = -1;  // consume the one-shots
+    state.jump = false;
     return copy;
 }
 

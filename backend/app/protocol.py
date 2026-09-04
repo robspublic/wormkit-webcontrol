@@ -27,6 +27,7 @@ class ControlAction(StrEnum):
     AIM_DOWN = "aim_down"
     SELECT_WEAPON = "select_weapon"
     FIRE = "fire"
+    JUMP = "jump"
 
 
 class ControlPhase(StrEnum):

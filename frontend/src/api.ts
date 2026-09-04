@@ -10,7 +10,8 @@ export type ControlAction =
   | "aim_up"
   | "aim_down"
   | "select_weapon"
-  | "fire";
+  | "fire"
+  | "jump";
 
 // Held-input phase: pressing starts a held input, releasing ends it. Fire is a
 // charge (press) then launch (release). Must match the backend ControlPhase.

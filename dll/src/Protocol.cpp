@@ -9,6 +9,7 @@ std::optional<ControlAction> parse_action(const std::string& s) {
     if (s == kActionAimDown) return ControlAction::AimDown;
     if (s == kActionSelectWeapon) return ControlAction::SelectWeapon;
     if (s == kActionFire) return ControlAction::Fire;
+    if (s == kActionJump) return ControlAction::Jump;
     return std::nullopt;
 }
 

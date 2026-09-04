@@ -2,7 +2,6 @@
 
 #include <cstring>
 #include <mutex>
-#include <string>
 
 #include "ControlState.h"
 #include "W2App.h"
@@ -117,29 +116,14 @@ void sendInput(Constants::TaskMessage mtype) {
 // ReleaseWeapon exactly once on the press / release edge. Game-thread only.
 bool g_wasFiring = false;
 
-// Rate-limited diagnostic: confirms held input is arriving and being applied.
-// Logged at most every ~100 frames while any input is held.
-void logHeldInputDiag(const ControlState::Snapshot& in) {
-    static int counter = 0;
-    const bool anything = in.move_left || in.move_right || in.aim_up ||
-                          in.aim_down || in.firing || in.select_weapon >= 0;
-    if (!anything) { counter = 0; return; }
-    if ((counter++ % 100) != 0) return;
-    Log::info("held input: L=" + std::to_string(in.move_left) +
-              " R=" + std::to_string(in.move_right) +
-              " U=" + std::to_string(in.aim_up) +
-              " D=" + std::to_string(in.aim_down) +
-              " fire=" + std::to_string(in.firing) +
-              " turnTeam=" + std::to_string(CTaskTurnGame::currentTurnTeam()));
-}
-
 // Translate the current held-input state into per-frame WA input messages.
 // Movement/aim are level-triggered (re-sent every frame while held); fire is
-// edge-triggered (FireWeapon on press, ReleaseWeapon on release). Runs on the
-// game thread from onFrame().
+// edge-triggered (FireWeapon on press, ReleaseWeapon on release); jump and
+// weapon-select are one-shots. Runs on the game thread from onFrame().
 void applyHeldInput() {
     ControlState::Snapshot in = ControlState::read();
-    logHeldInputDiag(in);
+
+    if (in.jump) sendInput(Constants::TaskMessage_Jump);
 
     if (in.select_weapon >= 0) {
         // TODO(offsets): SelectWeapon likely needs the weapon id as payload;

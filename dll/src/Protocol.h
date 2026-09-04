@@ -33,6 +33,7 @@ namespace Protocol {
     inline constexpr const char* kActionAimDown = "aim_down";
     inline constexpr const char* kActionSelectWeapon = "select_weapon";
     inline constexpr const char* kActionFire = "fire";
+    inline constexpr const char* kActionJump = "jump";
 
     // Phase string values (must equal Python ControlPhase values). A missing
     // phase defaults to "press" (see parse_phase).

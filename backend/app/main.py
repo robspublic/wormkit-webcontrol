@@ -218,8 +218,9 @@ async def control(ws: WebSocket) -> None:
 
     # Track which held inputs this client currently has pressed, and the team
     # it was controlling, so we can auto-release them if the socket drops mid
-    # hold (otherwise a worm keeps walking / charging). select_weapon is a
-    # one-shot and never "held", so it's excluded.
+    # hold (otherwise a worm keeps walking / charging). One-shot actions
+    # (select_weapon, jump) are never "held", so they're excluded.
+    one_shot = {ControlAction.SELECT_WEAPON, ControlAction.JUMP}
     held: set[ControlAction] = set()
     held_team: int | None = None
 
@@ -276,7 +277,7 @@ async def control(ws: WebSocket) -> None:
                 get_ipc().send_command(cmd)
 
                 # Track held state for auto-release (fire and the directions).
-                if action is not ControlAction.SELECT_WEAPON:
+                if action not in one_shot:
                     held_team = turn_team
                     if phase is ControlPhase.PRESS:
                         held.add(action)
