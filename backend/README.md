@@ -38,15 +38,28 @@ Identity comes only from the `X-Auth-Email` header set by your trusted
 oauth-proxy / nginx. The backend must sit behind that proxy so the header can't
 be spoofed by clients. `WKWC_ADMIN_EMAILS` restricts the admin API.
 
+## Team identity and the claim flow
+
+The DLL identifies teams by **number** (0-based slot), not name — team names
+have no reliable memory offset. Users never pick a number: when the current
+turn belongs to an unclaimed team, an unmapped user claims it via
+`POST /api/claim` ("This is my team"). One team per user. Admins can clear all
+claims (`POST /api/admin/clear-mappings`) so everyone re-claims.
+
 ## Endpoints
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/health` | none | liveness |
-| GET | `/api/me` | user | email + owned teams |
-| GET | `/api/turn` | user | current turn state (from DLL) |
-| GET | `/api/admin/mappings` | admin | list team→email |
-| PUT | `/api/admin/mappings/{team}` | admin | set mapping |
-| DELETE | `/api/admin/mappings/{team}` | admin | remove mapping |
+| GET | `/api/me` | user | email, claimed team number, is_admin |
+| GET | `/api/turn` | user | narrow turn state (from DLL) |
+| GET | `/api/monitor` | user | full game snapshot (from DLL) |
+| POST | `/api/claim` | user | claim the team currently taking its turn |
+| GET | `/api/admin/mappings` | admin | list team#→email |
+| DELETE | `/api/admin/mappings/{team_number}` | admin | remove one claim |
+| POST | `/api/admin/clear-mappings` | admin | clear all claims |
 | WS | `/ws/control` | user | send control actions (turn-gated) |
+
+Admins are the emails in `WKWC_ADMIN_EMAILS` (empty list = every authenticated
+user is admin, for dev convenience).
 ```

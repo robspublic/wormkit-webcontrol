@@ -1,35 +1,26 @@
 #include "CTaskTeam.h"
 
 #include "../W2App.h"
-#include "../Hooks.h"
 #include "../Log.h"
 
 void CTaskTeam::install() {
-    // TODO(offsets): if we need to hook team message handling (e.g. to observe
-    // turn changes), scan + hook it here. Not required for read-only turn/owner
-    // checks, which just read fields.
-    Log::info("CTaskTeam::install (stub)");
-}
-
-bool CTaskTeam::isOwnedByMe() {
-    // Ownership: compare this team's owner id with the local machine id stored
-    // in DdMain. For local couch co-op there is a single machine, so all teams
-    // are "owned by me" — but we keep the check faithful to the reference for
-    // correctness and future-proofing.
-    DWORD ddmain = W2App::getAddrDdMain();
-    if (ddmain == 0) return true; // offsets not wired yet; assume local
-    // TODO(offsets): char mymachine = *(char*)(ddmain + 0xD9DC + 0x40);
-    //                return owner_byte40 == mymachine;
-    return true;
+    // Read-only monitor needs no hook here; teams are reached by traversing the
+    // task tree from the turn-game task and matching classtype == Team.
+    Log::info("CTaskTeam::install (read-only, no hook)");
 }
 
 bool CTaskTeam::isTurnHolder() {
-    // TODO(offsets): compare this team against CTaskTurnGame's current-team
-    // fields (see CTaskTurnGame::currentTurnTeamNumber()).
-    return false;
+    // The turn-holding machine id lives at GameGlobal+0x726C. A team is the
+    // turn holder if its owner matches that machine.
+    DWORD gg = W2App::getAddrGameGlobal();
+    if (gg == 0) return false;
+    DWORD currentMachine = *(DWORD*)(gg + 0x726C);
+    return (DWORD)owner_byte40 == currentMachine;
 }
 
-const char* CTaskTeam::getName() const {
-    // TODO(offsets): locate the team-name string within the team struct.
-    return "";
+bool CTaskTeam::isOwnedByMe() {
+    DWORD ddmain = W2App::getAddrDdMain();
+    if (ddmain == 0) return true; // DdMain not wired (single-machine local play)
+    char myMachine = *(char*)(ddmain + 0xD9DC + 0x40);
+    return owner_byte40 == myMachine;
 }

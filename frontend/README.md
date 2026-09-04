@@ -2,14 +2,18 @@
 
 Two pages:
 
-- **Play** (`/`) — the player control pad. Polls `/api/turn`, opens the
-  `/ws/control` WebSocket, and enables the move/aim/weapon/fire buttons only
-  when the current turn belongs to one of the signed-in user's teams.
-- **Admin** (`/admin`) — CRUD for the team-name → player-email mapping via
-  `/api/admin/mappings`.
+- **Play** (`/`) — the player control pad. Polls `/api/monitor` for the current
+  turn. If the signed-in user hasn't claimed a team yet and a team is taking its
+  turn, a **"This is my team"** button claims it (`POST /api/claim`). The
+  move/aim/weapon/fire buttons are enabled only when the user's claimed team is
+  the one currently taking its turn.
+- **Monitor** (`/monitor`, admin-only) — read-only view of game state: whether a
+  game is running, teams (turn-holder highlighted, local flag, who claimed each),
+  and per-worm position/weapon/facing. Includes a **Clear team claims** button.
 
-Identity is provided by the fronting oauth-proxy/nginx via `X-Auth-Email`; the
-frontend never sets it. `/api/me` reports the current user and their teams.
+Teams are identified by **number** (the DLL can't read names). Identity is
+provided by the fronting oauth-proxy/nginx via `X-Auth-Email`; the frontend never
+sets it. `/api/me` reports the user's email, claimed team number, and admin flag.
 
 ## Setup
 

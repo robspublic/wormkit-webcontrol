@@ -21,10 +21,16 @@ int __fastcall hookWormHandleMessage(CTaskWorm* This, int EDX, CTask* sender,
 }
 
 void CTaskWorm::install() {
-    // TODO(offsets): scan for CTaskWorm::HandleMessage and install the detour.
-    //   DWORD addrWormHandleMessage = _ScanPattern("CTaskWormHandleMessage", <pattern>, <mask>);
+    // Read-only monitor reaches worms by traversing the task tree, so no hook
+    // is needed yet. The WormHandleMessage detour below is wired later when we
+    // implement control (the write path).
+    //
+    // TODO(control): scan CTaskWorm::HandleMessage and _HookDefault it:
+    //   DWORD addrWormHandleMessage = _ScanPattern("CTaskWormHandleMessage",
+    //       "\x55\x8B\xEC\x83\xE4\xF8...", "??????xx...");
     //   _HookDefault(WormHandleMessage);
-    Log::info("CTaskWorm::install (stub)");
+    (void)&hookWormHandleMessage; // silence unused-until-control warning
+    Log::info("CTaskWorm::install (read-only, no hook yet)");
 }
 
 bool CTaskWorm::isOwnedByMe() {

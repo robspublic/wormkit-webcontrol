@@ -6,9 +6,11 @@ Each message is a single JSON object on one line.
 Backend -> DLL:
     {"type": "cmd", "team": "Red", "action": "move_left", "value": 0}
     {"type": "query", "what": "turn"}
+    {"type": "query", "what": "state"}   # full monitor snapshot
 
-DLL -> Backend (response to a query):
-    {"turn_team": "Red", "pos_x": 1234, "pos_y": 567, "weapon": 3}
+DLL -> Backend (query responses):
+    turn:  {"turn_team": "Red", "pos_x": 1234, "pos_y": 567, "weapon": 3, ...}
+    state: {"round_active": true, "num_teams": 2, "teams": [ ... ], ...}
 """
 
 from __future__ import annotations
@@ -68,4 +70,47 @@ class TurnState(BaseModel):
     @classmethod
     def from_wire(cls, line: bytes) -> "TurnState":
         """Parse a JSON response line from the DLL."""
+        return cls.model_validate_json(line.decode("utf-8"))
+
+
+# --------------------------------------------------------------------------- #
+# Monitor snapshot (response to {"type":"query","what":"state"})
+#
+# Field names must match the DLL's Protocol serialization (dll/src/IpcServer.cpp
+# stateResponse() and dll/src/Protocol.h). Only high-confidence fields are
+# included; team NAME and HEALTH are intentionally absent (no reliable offset).
+# --------------------------------------------------------------------------- #
+class WormInfo(BaseModel):
+    team: int
+    worm: int
+    active: bool = False
+    pos_x: int = 0
+    pos_y: int = 0
+    weapon: int = 0
+    facing: int = 0
+
+
+class TeamInfo(BaseModel):
+    team_number: int
+    owner: int = 0
+    current_worm: int = 0
+    is_turn_holder: bool = False
+    is_local: bool = False
+    worms: list[WormInfo] = Field(default_factory=list)
+
+
+class GameSnapshot(BaseModel):
+    """Full read-only view of game state for the monitor."""
+
+    round_active: bool = False
+    before_round_start: bool = False
+    num_teams: int = 0
+    current_machine: int = -1
+    turn_team: int | None = None
+    turn_time_ms: int | None = None
+    teams: list[TeamInfo] = Field(default_factory=list)
+
+    @classmethod
+    def from_wire(cls, line: bytes) -> "GameSnapshot":
+        """Parse a JSON snapshot line from the DLL."""
         return cls.model_validate_json(line.decode("utf-8"))

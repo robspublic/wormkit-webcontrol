@@ -1,13 +1,19 @@
 """wkWebControl FastAPI application.
 
 Endpoints:
-    GET    /api/health                     - liveness
-    GET    /api/me                          - who am I (from proxy header)
-    GET    /api/turn                        - current turn state (from DLL)
-    GET    /api/admin/mappings              - list team<->email mappings
-    PUT    /api/admin/mappings/{team}       - set a mapping        (admin)
-    DELETE /api/admin/mappings/{team}       - remove a mapping     (admin)
-    WS     /ws/control                      - player control channel
+    GET    /api/health                       - liveness
+    GET    /api/me                            - who am I + my claimed team
+    GET    /api/turn                          - current turn state (from DLL)
+    GET    /api/monitor                       - full game snapshot (from DLL)
+    POST   /api/claim                         - claim the current turn's team
+    GET    /api/admin/mappings                - list team#->email mappings (admin)
+    DELETE /api/admin/mappings/{team_number}  - remove one mapping        (admin)
+    POST   /api/admin/clear-mappings          - clear all mappings         (admin)
+    WS     /ws/control                        - player control channel
+
+Teams are identified by NUMBER (the DLL can't read names). Users don't pick a
+number: when the current turn belongs to an unclaimed team, an unmapped user
+claims it via POST /api/claim ("This is my team"). One team per user.
 """
 
 from __future__ import annotations
@@ -22,7 +28,6 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from pydantic import BaseModel
 
 from .auth import require_admin, require_email
 from .config import settings
@@ -64,50 +69,84 @@ def health() -> dict[str, str]:
 
 @app.get("/api/me")
 def me(email: str = Depends(require_email)) -> dict[str, object]:
-    teams = get_store().teams_for_email(email)
-    return {"email": email, "teams": teams}
+    team = get_store().team_for_email(email)
+    is_admin = (not settings.admin_email_set()) or (email in settings.admin_email_set())
+    return {"email": email, "team": team, "is_admin": is_admin}
 
 
 @app.get("/api/turn")
 def turn(_: str = Depends(require_email)) -> dict[str, object]:
-    state = get_ipc().query_turn()
-    return state.model_dump()
+    return get_ipc().query_turn().model_dump()
+
+
+@app.get("/api/monitor")
+def monitor(_: str = Depends(require_email)) -> dict[str, object]:
+    """Full read-only game snapshot for the monitor view."""
+    return get_ipc().query_state().model_dump()
 
 
 # --------------------------------------------------------------------------- #
-# Admin: team <-> email mapping
+# Claim: an unmapped user claims the team currently taking its turn
 # --------------------------------------------------------------------------- #
-class MappingBody(BaseModel):
-    email: str
+@app.post("/api/claim")
+def claim(email: str = Depends(require_email)) -> dict[str, object]:
+    store = get_store()
+
+    # One team per user: refuse if the caller already owns a team.
+    existing = store.team_for_email(email)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You already control team {existing}",
+        )
+
+    state = get_ipc().query_state()
+    turn_team = state.turn_team
+    if turn_team is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No team is currently taking its turn",
+        )
+
+    # First-write-wins: claim() fails if the team was just taken by someone else.
+    if not store.claim(turn_team, email):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Team {turn_team} is already claimed",
+        )
+    return {"team": turn_team, "email": email}
 
 
+# --------------------------------------------------------------------------- #
+# Admin: view / clear mappings
+# --------------------------------------------------------------------------- #
 @app.get("/api/admin/mappings")
-def list_mappings(_: str = Depends(require_admin)) -> dict[str, str]:
+def list_mappings(_: str = Depends(require_admin)) -> dict[int, str]:
     return get_store().all_mappings()
 
 
-@app.put("/api/admin/mappings/{team}")
-def set_mapping(
-    team: str, body: MappingBody, _: str = Depends(require_admin)
-) -> dict[str, str]:
-    get_store().set_mapping(team, body.email)
-    return {"team": team, "email": body.email.lower()}
+@app.delete(
+    "/api/admin/mappings/{team_number}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_mapping(team_number: int, _: str = Depends(require_admin)) -> None:
+    get_store().delete_mapping(team_number)
 
 
-@app.delete("/api/admin/mappings/{team}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_mapping(team: str, _: str = Depends(require_admin)) -> None:
-    get_store().delete_mapping(team)
+@app.post("/api/admin/clear-mappings")
+def clear_mappings(_: str = Depends(require_admin)) -> dict[str, str]:
+    get_store().clear_all()
+    return {"status": "cleared"}
 
 
 # --------------------------------------------------------------------------- #
 # Player control WebSocket
 # --------------------------------------------------------------------------- #
-def _is_users_turn(email: str) -> tuple[bool, str | None]:
-    """Return (allowed, turn_team). The user may act only if the current
-    turn-holding team maps to their email."""
-    state = get_ipc().query_turn()
+def _is_users_turn(email: str) -> tuple[bool, int | None]:
+    """Return (allowed, turn_team_number). The user may act only if the current
+    turn-holding team is mapped to their email."""
+    state = get_ipc().query_state()
     turn_team = state.turn_team
-    if not turn_team:
+    if turn_team is None:
         return False, None
     owner = get_store().email_for_team(turn_team)
     return (owner == email, turn_team)
@@ -137,9 +176,10 @@ async def control(ws: WebSocket) -> None:
                 await ws.send_json({"ok": False, "error": "not your turn", "turn_team": turn_team})
                 continue
 
-            # turn_team is guaranteed non-None when allowed is True.
+            # turn_team is a non-None int when allowed. The DLL identifies the
+            # team by number; CommandMessage.team carries it as a string.
             cmd = CommandMessage(
-                team=turn_team,  # type: ignore[arg-type]
+                team=str(turn_team),
                 action=action,
                 value=int(msg.get("value", 0)),
             )

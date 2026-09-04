@@ -14,7 +14,8 @@ export type ControlAction =
 
 export interface Me {
   email: string;
-  teams: string[];
+  team: number | null; // claimed team number, or null
+  is_admin: boolean;
 }
 
 export interface TurnState {
@@ -25,12 +26,49 @@ export interface TurnState {
   round_active: boolean;
 }
 
+// Monitor snapshot (mirrors the backend GameSnapshot / TeamInfo / WormInfo).
+export interface WormInfo {
+  team: number;
+  worm: number;
+  active: boolean;
+  pos_x: number;
+  pos_y: number;
+  weapon: number;
+  facing: number;
+}
+
+export interface TeamInfo {
+  team_number: number;
+  owner: number;
+  current_worm: number;
+  is_turn_holder: boolean;
+  is_local: boolean;
+  worms: WormInfo[];
+}
+
+export interface GameSnapshot {
+  round_active: boolean;
+  before_round_start: boolean;
+  num_teams: number;
+  current_machine: number;
+  turn_team: number | null;
+  turn_time_ms: number | null;
+  teams: TeamInfo[];
+}
+
+// team number (as string, since JSON object keys are strings) -> email
 export type Mappings = Record<string, string>;
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body.detail ?? JSON.stringify(body);
+    } catch {
+      detail = await res.text().catch(() => "");
+    }
+    throw new Error(`${res.status}: ${detail}`);
   }
   return (await res.json()) as T;
 }
@@ -44,24 +82,24 @@ export const api = {
     return jsonOrThrow(await fetch("/api/turn"));
   },
 
+  async monitor(): Promise<GameSnapshot> {
+    return jsonOrThrow(await fetch("/api/monitor"));
+  },
+
+  async claim(): Promise<{ team: number; email: string }> {
+    return jsonOrThrow(await fetch("/api/claim", { method: "POST" }));
+  },
+
   async listMappings(): Promise<Mappings> {
     return jsonOrThrow(await fetch("/api/admin/mappings"));
   },
 
-  async setMapping(team: string, email: string): Promise<void> {
-    await jsonOrThrow(
-      await fetch(`/api/admin/mappings/${encodeURIComponent(team)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      }),
-    );
+  async clearMappings(): Promise<void> {
+    await jsonOrThrow(await fetch("/api/admin/clear-mappings", { method: "POST" }));
   },
 
-  async deleteMapping(team: string): Promise<void> {
-    const res = await fetch(`/api/admin/mappings/${encodeURIComponent(team)}`, {
-      method: "DELETE",
-    });
+  async deleteMapping(teamNumber: number): Promise<void> {
+    const res = await fetch(`/api/admin/mappings/${teamNumber}`, { method: "DELETE" });
     if (!res.ok && res.status !== 204) {
       throw new Error(`${res.status} ${res.statusText}`);
     }

@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "ControlState.h"
 
@@ -36,8 +37,45 @@ namespace Protocol {
     // Map an action string to the internal enum. Returns nullopt if unknown.
     std::optional<ControlAction> parse_action(const std::string& s);
 
-    // Current game state reported back to the backend for a "turn" query.
-    // Field names mirror the Python TurnState model.
+    // ----- Read-only monitor snapshot --------------------------------------
+    // A point-in-time view of game state, built on the game thread and read by
+    // the IPC thread. Field names mirror the Python models in protocol.py.
+    //
+    // Only high-confidence fields (proven readable in the reference module) are
+    // included. Team name and health are intentionally absent — they have no
+    // confirmed offset in WA 3.8.1 and would be guesses.
+
+    struct WormSnapshot {
+        int team = 0;      // owning team number
+        int worm = 0;      // worm number within the team
+        bool active = false;
+        int pos_x = 0;
+        int pos_y = 0;
+        int weapon = 0;    // selected weapon index
+        int facing = 0;    // facing direction (+/-1)
+    };
+
+    struct TeamSnapshot {
+        int team_number = 0;
+        int owner = 0;           // owning machine id
+        int current_worm = 0;    // current worm number
+        bool is_turn_holder = false;
+        bool is_local = false;   // owned by the local machine
+        std::vector<WormSnapshot> worms;
+    };
+
+    struct GameSnapshot {
+        bool round_active = false;       // a game/match is loaded (GameGlobal != 0)
+        bool before_round_start = false; // worms still being placed
+        int num_teams = 0;
+        int current_machine = -1;        // machine id currently holding the turn
+        std::optional<int> turn_team;    // team_number of the turn holder, if known
+        std::optional<int> turn_time_ms; // turn timer (ms), if in a game
+        std::vector<TeamSnapshot> teams;
+    };
+
+    // Back-compat: the original "turn" query still answers with these fields,
+    // derived from the snapshot (turn team + its active worm's position/weapon).
     struct TurnSnapshot {
         std::optional<std::string> turn_team;
         std::optional<int> pos_x;

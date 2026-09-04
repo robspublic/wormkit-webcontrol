@@ -18,8 +18,11 @@ class ControlHooks {
 public:
     static void install();
 
-    // Read the current turn/worm state for a backend "turn" query. Safe to
-    // call from the IPC thread: reads a snapshot published by the game thread.
+    // Read the latest game-state snapshot for the backend monitor query. Safe
+    // to call from the IPC thread: returns a copy published by the game thread.
+    static Protocol::GameSnapshot snapshot_game();
+
+    // Back-compat: the narrower "turn" view, derived from the game snapshot.
     static Protocol::TurnSnapshot snapshot_turn();
 };
 

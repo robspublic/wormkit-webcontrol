@@ -165,3 +165,94 @@ body {
   color: var(--muted);
   text-align: center;
 }
+
+/* ---- Claim button (control page) ---- */
+.claim {
+  margin-bottom: 16px;
+}
+.btn.claim-btn {
+  width: 100%;
+  background: #2f5e7a;
+  font-weight: 700;
+}
+
+/* ---- Monitor page ---- */
+.monitor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.game-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0 20px;
+}
+.game-stats > div {
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-width: 90px;
+}
+.game-stats dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+.game-stats dd {
+  margin: 2px 0 0;
+  font-size: 1.2rem;
+}
+
+.team-card {
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid transparent;
+}
+.team-card.turn {
+  border-color: var(--accent);
+}
+.team-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.tag {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #2a333d;
+  color: var(--muted);
+}
+.tag.turn-tag {
+  background: var(--accent);
+  color: #0c1a0f;
+  font-weight: 700;
+}
+.team-head .claimed {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.worm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.worm-table th,
+.worm-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid #2a333d;
+}
+.worm-table tr.current td {
+  color: var(--accent);
+  font-weight: 600;
+}
+.worm-table .empty {
+  color: var(--muted);
+  text-align: center;
+}

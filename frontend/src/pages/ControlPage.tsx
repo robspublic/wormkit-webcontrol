@@ -5,35 +5,32 @@ import {
   api,
   openControlSocket,
   type ControlAction,
-  type Me,
-  type TurnState,
+  type GameSnapshot,
 } from "../api";
+import type { AppContext } from "../App";
 
-interface Ctx {
-  me: Me | null;
-}
-
-// How often to refresh whose turn it is.
-const TURN_POLL_MS = 1000;
+// How often to refresh the game snapshot (whose turn it is).
+const POLL_MS = 1000;
 
 export default function ControlPage() {
-  const { me } = useOutletContext<Ctx>();
-  const [turn, setTurn] = useState<TurnState | null>(null);
+  const { me, refreshMe } = useOutletContext<AppContext>();
+  const [snap, setSnap] = useState<GameSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [lastReply, setLastReply] = useState<string>("");
+  const [claimError, setClaimError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
-  // Poll turn state.
+  // Poll the game snapshot.
   useEffect(() => {
     let active = true;
     const tick = () => {
       api
-        .turn()
-        .then((t) => active && setTurn(t))
-        .catch(() => active && setTurn(null));
+        .monitor()
+        .then((s) => active && setSnap(s))
+        .catch(() => active && setSnap(null));
     };
     tick();
-    const id = setInterval(tick, TURN_POLL_MS);
+    const id = setInterval(tick, POLL_MS);
     return () => {
       active = false;
       clearInterval(id);
@@ -50,9 +47,26 @@ export default function ControlPage() {
     return () => ws.close();
   }, []);
 
-  const myTeams = me?.teams ?? [];
-  const turnTeam = turn?.turn_team ?? null;
-  const isMyTurn = turnTeam !== null && myTeams.includes(turnTeam);
+  const myTeam = me?.team ?? null;
+  const turnTeam = snap?.turn_team ?? null;
+  const roundActive = snap?.round_active ?? false;
+
+  // It's my turn when I've claimed the team that currently holds the turn.
+  const isMyTurn = myTeam !== null && turnTeam !== null && myTeam === turnTeam;
+
+  // Show the claim button when I have no team yet and a team is currently
+  // taking its turn (that's the team I'd be claiming).
+  const canClaim = myTeam === null && roundActive && turnTeam !== null;
+
+  async function onClaim() {
+    setClaimError(null);
+    try {
+      await api.claim();
+      refreshMe();
+    } catch (e) {
+      setClaimError(String(e));
+    }
+  }
 
   function send(action: ControlAction, value = 0) {
     const ws = socketRef.current;
@@ -64,12 +78,25 @@ export default function ControlPage() {
   return (
     <div className="control">
       <div className={`turn-banner ${isMyTurn ? "active" : "waiting"}`}>
-        {turnTeam === null
-          ? "Waiting for the round to start…"
-          : isMyTurn
-            ? `Your turn — controlling ${turnTeam}`
-            : `${turnTeam}'s turn — please wait`}
+        {!roundActive
+          ? "Waiting for a game to start…"
+          : myTeam === null
+            ? turnTeam !== null
+              ? `Team ${turnTeam} is up — claim it if it's yours`
+              : "Waiting for a turn…"
+            : isMyTurn
+              ? `Your turn — controlling team ${myTeam}`
+              : `Team ${turnTeam}'s turn — you have team ${myTeam}, please wait`}
       </div>
+
+      {canClaim && (
+        <div className="claim">
+          <button className="btn claim-btn" onClick={onClaim}>
+            This is my team (Team {turnTeam})
+          </button>
+          {claimError && <div className="banner error">{claimError}</div>}
+        </div>
+      )}
 
       <fieldset disabled={!isMyTurn} className="pad">
         <div className="row">

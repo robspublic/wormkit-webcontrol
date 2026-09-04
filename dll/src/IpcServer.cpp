@@ -33,6 +33,47 @@ namespace {
         return j.dump() + "\n";
     }
 
+    // Serialize the full game snapshot to a JSON line for a "state" query.
+    // Field names must match the Python GameSnapshot / TeamInfo / WormInfo
+    // models exactly.
+    std::string stateResponse() {
+        Protocol::GameSnapshot s = ControlHooks::snapshot_game();
+        json j;
+        j["round_active"] = s.round_active;
+        j["before_round_start"] = s.before_round_start;
+        j["num_teams"] = s.num_teams;
+        j["current_machine"] = s.current_machine;
+        j["turn_team"] = s.turn_team ? json(*s.turn_team) : json(nullptr);
+        j["turn_time_ms"] = s.turn_time_ms ? json(*s.turn_time_ms) : json(nullptr);
+
+        json teams = json::array();
+        for (const auto& t : s.teams) {
+            json jt;
+            jt["team_number"] = t.team_number;
+            jt["owner"] = t.owner;
+            jt["current_worm"] = t.current_worm;
+            jt["is_turn_holder"] = t.is_turn_holder;
+            jt["is_local"] = t.is_local;
+
+            json worms = json::array();
+            for (const auto& w : t.worms) {
+                worms.push_back({
+                    {"team", w.team},
+                    {"worm", w.worm},
+                    {"active", w.active},
+                    {"pos_x", w.pos_x},
+                    {"pos_y", w.pos_y},
+                    {"weapon", w.weapon},
+                    {"facing", w.facing},
+                });
+            }
+            jt["worms"] = std::move(worms);
+            teams.push_back(std::move(jt));
+        }
+        j["teams"] = std::move(teams);
+        return j.dump() + "\n";
+    }
+
     // Handle one newline-delimited JSON message. Returns an optional response
     // line to write back (present only for queries).
     std::optional<std::string> handleMessage(const std::string& line) {
@@ -61,10 +102,9 @@ namespace {
         }
 
         if (type == Protocol::kTypeQuery) {
-            // Currently only "turn" is supported.
-            if (j.value("what", "") == "turn") {
-                return turnResponse();
-            }
+            const std::string what = j.value("what", "");
+            if (what == "turn") return turnResponse();
+            if (what == "state") return stateResponse();
             return std::nullopt;
         }
 
