@@ -1,0 +1,48 @@
+# ---- Python (backend) ----
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# ---- C++ / CMake (DLL) ----
+# Build output directories
+cmake-build-*/
+/dll/build/
+/dll/out/
+*.obj
+*.o
+*.dll
+*.exp
+*.lib
+*.pdb
+*.ilk
+# Offset cache produced at runtime
+*.cache
+
+# ---- Runtime data ----
+# SQLite mapping DB created by the backend at runtime.
+*.db
+
+# ---- Local reference material (cloned third-party repos, not ours) ----
+# Kept locally for study; not part of this project and not published.
+/reference/
+
+# ---- General ----
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example

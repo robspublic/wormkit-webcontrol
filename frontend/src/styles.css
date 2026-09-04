@@ -1,0 +1,167 @@
+:root {
+  --bg: #12161c;
+  --panel: #1c232c;
+  --accent: #4caf50;
+  --danger: #c0392b;
+  --text: #e6edf3;
+  --muted: #8b98a5;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 12px 24px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 4px;
+  border-bottom: 1px solid #2a333d;
+}
+.topbar .brand {
+  font-weight: 700;
+}
+.topbar nav {
+  display: flex;
+  gap: 12px;
+}
+.topbar nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.topbar nav a:hover {
+  color: var(--text);
+}
+.topbar .who {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.banner {
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+.banner.error {
+  background: #3a1d1d;
+  color: #ffb4b4;
+}
+
+/* ---- Control page ---- */
+.turn-banner {
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 1.1rem;
+  margin: 16px 0;
+}
+.turn-banner.active {
+  background: #1f3d24;
+  color: #b6f0c1;
+}
+.turn-banner.waiting {
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.pad {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.pad:disabled {
+  opacity: 0.4;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.btn {
+  flex: 1;
+  padding: 22px 12px;
+  font-size: 1.1rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn.fire {
+  background: #7a2f22;
+}
+.btn.danger {
+  background: var(--danger);
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  flex: none;
+}
+
+.status {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.status .reply {
+  font-family: monospace;
+}
+
+/* ---- Admin page ---- */
+.admin h2 {
+  margin-bottom: 4px;
+}
+.hint {
+  color: var(--muted);
+  margin-top: 0;
+}
+.mapping-form {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.mapping-form input {
+  flex: 1;
+  min-width: 160px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #2a333d;
+  background: var(--panel);
+  color: var(--text);
+}
+.mapping-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.mapping-table th,
+.mapping-table td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid #2a333d;
+}
+.mapping-table .empty {
+  color: var(--muted);
+  text-align: center;
+}

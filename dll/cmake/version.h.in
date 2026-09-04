@@ -1,0 +1,11 @@
+#ifndef WKWEBCONTROL_VERSION_H
+#define WKWEBCONTROL_VERSION_H
+
+#define PROJECT_NAME        "@PROJECT_NAME@"
+#define PROJECT_VERSION     "@PROJECT_VERSION@"
+#define PROJECT_DESCRIPTION "@PROJECT_DESCRIPTION@"
+
+// Game version this module was reverse-engineered against.
+#define WA_TARGET_VERSION   "3.8.1"
+
+#endif // WKWEBCONTROL_VERSION_H

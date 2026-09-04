@@ -1,0 +1,15 @@
+[wkWebControl]
+; Master enable switch for the module.
+Enabled=1
+
+; Allocate a console window and print diagnostic logs there.
+DevConsole=0
+
+; Verify the running WA.exe matches the version this module targets (3.8.1).
+CheckWaVersion=1
+
+; Single-instance guard.
+Mutex=1
+
+; Named pipe the FastAPI backend connects to. Must match the backend config.
+PipeName=\\.\pipe\wkwebcontrol

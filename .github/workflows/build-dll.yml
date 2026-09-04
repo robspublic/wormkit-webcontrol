@@ -1,0 +1,56 @@
+name: Build wkWebControl DLL
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "dll/**"
+      - ".github/workflows/build-dll.yml"
+  pull_request:
+    paths:
+      - "dll/**"
+      - ".github/workflows/build-dll.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # PolyHook + its nested deps (zydis/asmjit/asmtk) dominate build time.
+      # Cache the CMake build tree keyed on the submodule commit + build config.
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: dll/build
+          key: cmake-${{ runner.os }}-${{ hashFiles('.gitmodules', 'dll/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-${{ runner.os }}-
+
+      - name: Configure (MSVC, 32-bit)
+        working-directory: dll
+        run: cmake -B build -A Win32
+
+      - name: Build (Release)
+        working-directory: dll
+        run: cmake --build build --config Release --parallel
+
+      - name: Stage artifact
+        working-directory: dll
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item build/Release/wkWebControl.dll dist/
+          Copy-Item wkWebControl.ini.example dist/
+
+      - name: Upload wkWebControl.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: wkWebControl
+          path: dll/dist/*
+          if-no-files-found: error

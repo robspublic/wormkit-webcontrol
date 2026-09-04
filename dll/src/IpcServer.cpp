@@ -1,0 +1,148 @@
+#include "IpcServer.h"
+
+#include <windows.h>
+#include <atomic>
+#include <optional>
+#include <string>
+#include <thread>
+
+#include <nlohmann/json.hpp>
+
+#include "Config.h"
+#include "ControlHooks.h"
+#include "ControlState.h"
+#include "Log.h"
+#include "Protocol.h"
+
+using json = nlohmann::json;
+
+namespace {
+    std::thread g_thread;
+    std::atomic<bool> g_running{false};
+
+    // Serialize the current turn snapshot to a JSON line for a "turn" query.
+    // Field names must match the Python TurnState model.
+    std::string turnResponse() {
+        Protocol::TurnSnapshot s = ControlHooks::snapshot_turn();
+        json j;
+        j["turn_team"] = s.turn_team ? json(*s.turn_team) : json(nullptr);
+        j["pos_x"] = s.pos_x ? json(*s.pos_x) : json(nullptr);
+        j["pos_y"] = s.pos_y ? json(*s.pos_y) : json(nullptr);
+        j["weapon"] = s.weapon ? json(*s.weapon) : json(nullptr);
+        j["round_active"] = s.round_active;
+        return j.dump() + "\n";
+    }
+
+    // Handle one newline-delimited JSON message. Returns an optional response
+    // line to write back (present only for queries).
+    std::optional<std::string> handleMessage(const std::string& line) {
+        json j;
+        try {
+            j = json::parse(line);
+        } catch (const std::exception& e) {
+            Log::warn(std::string("bad JSON from backend: ") + e.what());
+            return std::nullopt;
+        }
+
+        const std::string type = j.value("type", "");
+
+        if (type == Protocol::kTypeCommand) {
+            auto action = Protocol::parse_action(j.value("action", ""));
+            if (!action) {
+                Log::warn("unknown action: " + j.value("action", ""));
+                return std::nullopt;
+            }
+            ControlCommand cmd;
+            cmd.team = j.value("team", "");
+            cmd.action = *action;
+            cmd.value = j.value("value", 0);
+            ControlState::push(cmd);
+            return std::nullopt;
+        }
+
+        if (type == Protocol::kTypeQuery) {
+            // Currently only "turn" is supported.
+            if (j.value("what", "") == "turn") {
+                return turnResponse();
+            }
+            return std::nullopt;
+        }
+
+        Log::warn("unknown message type: " + type);
+        return std::nullopt;
+    }
+
+    // Read from the connected pipe, splitting the byte stream on '\n' into
+    // messages. Loops until the client disconnects or the server stops.
+    void servePipe(HANDLE pipe) {
+        std::string buffer;
+        char chunk[1024];
+        while (g_running.load()) {
+            DWORD read = 0;
+            if (!ReadFile(pipe, chunk, sizeof(chunk), &read, nullptr) || read == 0) {
+                break; // client disconnected or error
+            }
+            buffer.append(chunk, read);
+
+            // Process every complete line currently in the buffer.
+            size_t nl;
+            while ((nl = buffer.find('\n')) != std::string::npos) {
+                std::string line = buffer.substr(0, nl);
+                buffer.erase(0, nl + 1);
+                if (line.empty()) continue;
+
+                auto response = handleMessage(line);
+                if (response) {
+                    DWORD written = 0;
+                    WriteFile(pipe, response->data(),
+                              (DWORD)response->size(), &written, nullptr);
+                }
+            }
+        }
+    }
+
+    void serverLoop(std::string pipeName) {
+        Log::info("IpcServer listening on " + pipeName);
+        while (g_running.load()) {
+            HANDLE pipe = CreateNamedPipeA(
+                pipeName.c_str(),
+                PIPE_ACCESS_DUPLEX,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                1,           // single instance: one local backend
+                4096, 4096,  // out/in buffer sizes
+                0, nullptr);
+            if (pipe == INVALID_HANDLE_VALUE) {
+                Log::error("CreateNamedPipe failed");
+                Sleep(500);
+                continue;
+            }
+
+            // Block until the backend connects.
+            BOOL connected = ConnectNamedPipe(pipe, nullptr)
+                                 ? TRUE
+                                 : (GetLastError() == ERROR_PIPE_CONNECTED);
+            if (connected) {
+                servePipe(pipe);
+            }
+
+            DisconnectNamedPipe(pipe);
+            CloseHandle(pipe);
+        }
+        Log::info("IpcServer stopped");
+    }
+}
+
+void IpcServer::install() {
+    if (g_running.exchange(true)) return; // already running
+    g_thread = std::thread(serverLoop, Config::getPipeName());
+}
+
+void IpcServer::stop() {
+    if (!g_running.exchange(false)) return;
+    // Nudge the accept by opening/closing a client handle so ConnectNamedPipe
+    // returns; then join.
+    HANDLE nudge = CreateFileA(Config::getPipeName().c_str(), GENERIC_READ,
+                               0, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (nudge != INVALID_HANDLE_VALUE) CloseHandle(nudge);
+    if (g_thread.joinable()) g_thread.join();
+}
