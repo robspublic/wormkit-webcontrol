@@ -24,6 +24,18 @@ public:
     char _pad190[0x2E0 - 0x190];
 
     static void install();
+
+    // The team number currently taking its turn, or -1 if none. Tracked from
+    // StartTurn/TurnStarted messages (the machine-id approach can't distinguish
+    // teams in single-machine local play, where all teams share one machine).
+    static int currentTurnTeam();
+    static void clearTurn();  // called on game teardown
+
+private:
+    static int __fastcall hookTurnHandleMessage(CTaskTurnGame* This, int EDX,
+                                                CTask* sender,
+                                                Constants::TaskMessage mtype,
+                                                size_t size, void* data);
 };
 
 #endif // WKWEBCONTROL_CTASKTURNGAME_H

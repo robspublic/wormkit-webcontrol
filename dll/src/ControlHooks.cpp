@@ -44,6 +44,11 @@ Protocol::GameSnapshot buildSnapshot() {
     snap.before_round_start = tg->its_before_round_start_dword140 != 0;
     snap.turn_time_ms = tg->turn_timer1_unknown188;
 
+    // The active team is tracked from turn messages (machine-id can't tell
+    // teams apart in single-machine local play). -1 means no turn in progress.
+    const int activeTeam = CTaskTurnGame::currentTurnTeam();
+    if (activeTeam >= 0) snap.turn_team = activeTeam;
+
     // Traverse: for each Team task, gather its fields and its worm children.
     tg->traverse([&](CTask* obj) {
         if (obj->classtype != Constants::ClassType_Team) return;
@@ -53,7 +58,7 @@ Protocol::GameSnapshot buildSnapshot() {
         ts.team_number = team->team_number_dword38;
         ts.owner = team->owner_byte40;
         ts.current_worm = team->current_worm_number_dword48;
-        ts.is_turn_holder = team->isTurnHolder();
+        ts.is_turn_holder = (activeTeam >= 0 && team->team_number_dword38 == activeTeam);
         ts.is_local = team->isOwnedByMe();
 
         for (int i = 0; i < team->children.count; ++i) {
@@ -72,7 +77,6 @@ Protocol::GameSnapshot buildSnapshot() {
             ts.worms.push_back(ws);
         }
 
-        if (ts.is_turn_holder) snap.turn_team = ts.team_number;
         snap.teams.push_back(std::move(ts));
     });
 
@@ -124,6 +128,10 @@ void ControlHooks::install() {
     // frame. Until then the snapshot is built on demand (see note below).
     (void)&onFrame;
     Log::info("ControlHooks::install (snapshot builder ready)");
+}
+
+void ControlHooks::onGameTornDown() {
+    CTaskTurnGame::clearTurn();
 }
 
 Protocol::GameSnapshot ControlHooks::snapshot_game() {

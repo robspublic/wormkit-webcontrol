@@ -13,6 +13,24 @@ namespace Constants {
         TaskMessage_FrameStart  = 1,
         TaskMessage_FrameFinish = 2,
         TaskMessage_RenderScene = 3,
+
+        // Input/control messages (leading DWORD of payload is a team number for
+        // the turn messages). Values verified against WA 3.8.1 (reference).
+        TaskMessage_MoveLeft     = 30,
+        TaskMessage_MoveRight    = 31,
+        TaskMessage_FaceLeft     = 34,
+        TaskMessage_FaceRight    = 35,
+        TaskMessage_FireWeapon   = 38,
+        TaskMessage_SkipGo       = 41,
+        TaskMessage_SelectWeapon = 51,
+
+        // Turn lifecycle. StartTurn/TurnStarted payload's first DWORD is the
+        // active team number; FinishTurn/TurnFinished mark end of a turn.
+        TaskMessage_StartTurn    = 52,
+        TaskMessage_FinishTurn   = 55,
+        TaskMessage_TurnStarted  = 56,
+        TaskMessage_TurnFinished = 57,
+
         // Custom message ids start high to avoid colliding with the game's
         // space. Internal to wkWebControl; only ever dispatched by us.
         TaskMessage_WebControlApply = 0x7000, // apply queued web input to worm

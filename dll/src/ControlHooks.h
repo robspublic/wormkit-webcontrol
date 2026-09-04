@@ -24,6 +24,10 @@ public:
 
     // Back-compat: the narrower "turn" view, derived from the game snapshot.
     static Protocol::TurnSnapshot snapshot_turn();
+
+    // Called when the game is torn down, so per-game state (turn tracking) is
+    // cleared. Invoked from W2App::hookDestroyGameGlobal.
+    static void onGameTornDown();
 };
 
 #endif // WKWEBCONTROL_CONTROLHOOKS_H

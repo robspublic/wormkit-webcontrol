@@ -2,6 +2,7 @@
 
 #include "Hooks.h"
 #include "Log.h"
+#include "ControlHooks.h"
 
 // Trampolines to the original game functions, filled in by Hooks::hook.
 DWORD origInitializeW2App = 0;
@@ -44,7 +45,14 @@ DWORD __stdcall W2App::hookConstructGameGlobal(DWORD ddGame) {
 
 DWORD __fastcall W2App::hookDestroyGameGlobal(int This, int EDX) {
     addrGameGlobal = 0;
-    return origDestroyGameGlobal(This, EDX);
+    // Notify the control layer so it can clear per-game turn state.
+    ControlHooks::onGameTornDown();
+    DWORD ret = origDestroyGameGlobal(This, EDX);
+    // ddGame's turn-game slot (+0x8) is only valid while a game exists; clear
+    // our cached ddGame on teardown so a between-games snapshot reports "no
+    // game" rather than reading a freed object.
+    addrDdGame = 0;
+    return ret;
 }
 
 void W2App::install() {
