@@ -157,11 +157,28 @@ CTaskWorm* findActiveTurnWorm() {
 // 464 * selected_weapon_unknown170 when the pointer is 0). Weapon selection is
 // worm STATE, not a transient input message, so a direct write is the right
 // model (and why routing SelectWeapon through the turn-game did nothing).
+//
+// We must set BOTH the index (0x170) and the cached weapon-table entry pointer
+// (0x36C) ourselves: the base game does NOT recompute the pointer when it's
+// zeroed (that recompute lives in the reference module's own frame hook, which
+// we don't run). Zeroing 0x36C and leaving it caused the game to dereference a
+// null entry -> crash (read of [null+0x30]). So compute the entry pointer here,
+// exactly like the reference: entry = *(gameGlobal+0x510) + 464 * index.
 void applyWeapon(int weaponId) {
+    // Guard the index to the known weapon-table range so we never point past
+    // the table (an out-of-range entry would fault when the game reads it).
+    if (weaponId < 1 || weaponId > 70) return;
+
+    DWORD gg = W2App::getAddrGameGlobal();
+    if (gg == 0) return;
+    DWORD weaponTable = *(DWORD*)(gg + 0x510);
+    if (weaponTable == 0) return;
+
     CTaskWorm* worm = findActiveTurnWorm();
     if (worm == nullptr) return;
+
     worm->selected_weapon_unknown170 = weaponId;
-    worm->selected_weapon_entry_ptr36C = 0;  // force recompute of table entry
+    worm->selected_weapon_entry_ptr36C = (int)(weaponTable + 464u * (DWORD)weaponId);
 }
 
 // Was the fire button held on the previous frame? Used to emit FireWeapon /
