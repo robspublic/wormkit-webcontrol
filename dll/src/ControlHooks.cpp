@@ -117,6 +117,53 @@ void sendInput(Constants::TaskMessage mtype, int payload = -1) {
     tg->vtable8_HandleMessage(tg, mtype, sizeof(buff), buff);
 }
 
+// Find the active worm of the team currently taking its turn, by traversing
+// the live task tree. Returns nullptr if not in a game / no turn / not found.
+// Game-thread only (called from onFrame). Prefers the team's current-worm; if
+// that can't be matched, falls back to any worm flagged active.
+CTaskWorm* findActiveTurnWorm() {
+    const int activeTeam = CTaskTurnGame::currentTurnTeam();
+    if (activeTeam < 0) return nullptr;
+    auto* tg = (CTaskTurnGame*)W2App::getAddrTurnGame();
+    if (tg == nullptr) return nullptr;
+
+    CTaskWorm* result = nullptr;
+    tg->traverse([&](CTask* obj) {
+        if (result) return;
+        if (obj->classtype != Constants::ClassType_Team) return;
+        auto* team = (CTaskTeam*)obj;
+        if (team->team_number_dword38 != activeTeam) return;
+
+        CTaskWorm* firstActive = nullptr;
+        for (int i = 0; i < team->children.count; ++i) {
+            CTask* child = team->children.data ? team->children.data[i] : nullptr;
+            if (!child) continue;
+            auto* worm = (CTaskWorm*)child;
+            if (worm->wormnumber_dword100 == team->current_worm_number_dword48) {
+                result = worm;  // exact current-worm match wins
+                return;
+            }
+            if (!firstActive && worm->active_dword104 != 0) firstActive = worm;
+        }
+        if (!result) result = firstActive;
+    });
+    return result;
+}
+
+// Select a weapon on the turn-holder's active worm by writing its state
+// directly (game thread). Setting the index and zeroing the cached table-entry
+// pointer makes the game recompute the entry on its next frame -- this mirrors
+// the reference worm hook (selected_weapon_entry_ptr36C = weaponTable +
+// 464 * selected_weapon_unknown170 when the pointer is 0). Weapon selection is
+// worm STATE, not a transient input message, so a direct write is the right
+// model (and why routing SelectWeapon through the turn-game did nothing).
+void applyWeapon(int weaponId) {
+    CTaskWorm* worm = findActiveTurnWorm();
+    if (worm == nullptr) return;
+    worm->selected_weapon_unknown170 = weaponId;
+    worm->selected_weapon_entry_ptr36C = 0;  // force recompute of table entry
+}
+
 // Was the fire button held on the previous frame? Used to emit FireWeapon /
 // ReleaseWeapon exactly once on the press / release edge. Game-thread only.
 bool g_wasFiring = false;
@@ -131,10 +178,9 @@ void applyHeldInput() {
     if (in.jump) sendInput(Constants::TaskMessage_Jump);
 
     if (in.select_weapon >= 0) {
-        // Carry the weapon id as the payload's leading DWORD. TODO(in-game):
-        // confirm whether SelectWeapon wants the WA weapon-enum id (what the
-        // web UI sends) or a 0-based panel index; adjust here if off by one.
-        sendInput(Constants::TaskMessage_SelectWeapon, in.select_weapon);
+        // Weapon selection is worm state: write it directly to the active worm
+        // (routing a SelectWeapon message through the turn-game had no effect).
+        applyWeapon(in.select_weapon);
     }
 
     // Movement + aim: assert each held direction this frame.
