@@ -40,6 +40,7 @@ inside the DLL, not just in the web layer.
 | `dll/`      | `wkWebControl` WormKit plugin (C++, PolyHook 2.0, pattern scanning) | CMake + MSVC (Windows / CI) |
 | `backend/`  | FastAPI app: admin API, control WebSocket, turn gating, pipe client | Python 3 + venv |
 | `frontend/` | Vite/React: admin page + player control page | Node |
+| `scripts/`  | Helpers to fetch CI build artifacts and deploy the DLL | bash + `gh` |
 | `reference/`| Cloned open-source WormKit modules used as implementation models | (read-only) |
 
 ## Reference modules
@@ -61,6 +62,51 @@ rely on MSVC inline asm, `__fastcall`, and naked functions that do not port to
 GCC/MinGW as-is). Because the host here is Linux, the DLL builds either on a
 Windows machine/VM or via a GitHub Actions Windows runner. The backend and
 frontend run natively on Linux.
+
+## Building and deploying the DLL
+
+The Windows CI (`.github/workflows/build-dll.yml`) builds `wkWebControl.dll` on
+every push touching `dll/**` and uploads it as an artifact. Two helper scripts
+in `scripts/` cover the round trip from a pushed build to the running game.
+
+### 1. Fetch the built DLL — `scripts/fetch-artifact.sh`
+
+Downloads the latest CI build artifact into `gitHubArtifacts/` (gitignored).
+Artifacts live in GitHub Actions storage, not git, so this uses the GitHub CLI
+(`gh`), not the SSH remote.
+
+One-time setup: install `gh` and authenticate.
+
+```
+sudo apt install gh      # or: sudo snap install gh
+gh auth login
+```
+
+Then, after pushing a change:
+
+```
+scripts/fetch-artifact.sh --wait     # wait for the build to finish, then download
+scripts/fetch-artifact.sh            # grab the latest completed run's artifact
+scripts/fetch-artifact.sh --run <id> # download from a specific run id
+```
+
+### 2. Deploy into Worms Armageddon — `scripts/deploy-artifact.sh`
+
+Copies `gitHubArtifacts/wkWebControl.dll` into the WA install dir, backing up any
+currently deployed DLL to `wkWebControl.dll.YYYYMMDD.bak` first (a `-HHMMSS`
+suffix is added if a same-day backup already exists). It verifies the target
+really is the WA folder (checks for `WA.exe`) before writing, and installs the
+example ini as `wkWebControl.ini` only if no config exists yet.
+
+```
+scripts/deploy-artifact.sh                    # deploy to the default WA dir
+scripts/deploy-artifact.sh --wa-dir <path>    # deploy to a different install
+```
+
+Default WA dir: `/mnt/linux-hdd/steam/steamapps/common/Worms Armageddon`.
+
+Typical loop: push a change → `fetch-artifact.sh --wait` → `deploy-artifact.sh`
+→ launch WA (with `DevConsole=1` in the ini to see the module's log).
 
 ## IPC contract
 
