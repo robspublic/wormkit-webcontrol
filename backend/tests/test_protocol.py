@@ -13,9 +13,7 @@ from app.protocol import (
     CommandMessage,
     ControlAction,
     GameSnapshot,
-    QueryMessage,
     TeamInfo,
-    TurnState,
     WormInfo,
 )
 
@@ -41,47 +39,9 @@ def test_command_wire_shape():
     assert obj == {"type": "cmd", "team": "Red", "action": "move_left", "value": 0}
 
 
-def test_query_wire_shape():
-    obj = json.loads(QueryMessage(what="turn").to_wire())
-    assert obj == {"type": "query", "what": "turn"}
-
-
-def test_turn_state_field_names():
-    # Field names must match what the DLL emits in turnResponse().
-    ts = TurnState(turn_team="Red", pos_x=1, pos_y=2, weapon=3, round_active=True)
-    assert set(ts.model_dump().keys()) == {
-        "turn_team",
-        "pos_x",
-        "pos_y",
-        "weapon",
-        "round_active",
-    }
-
-
-def test_turn_state_parses_dll_response():
-    # A response line exactly as the DLL's turnResponse() would produce it.
-    line = b'{"turn_team":"Red","pos_x":1234,"pos_y":567,"weapon":3,"round_active":true}'
-    ts = TurnState.from_wire(line)
-    assert ts.turn_team == "Red"
-    assert ts.pos_x == 1234
-    assert ts.round_active is True
-
-
-def test_turn_state_parses_early_game_nulls():
-    line = b'{"turn_team":null,"pos_x":null,"pos_y":null,"weapon":null,"round_active":false}'
-    ts = TurnState.from_wire(line)
-    assert ts.turn_team is None
-    assert ts.round_active is False
-
-
-# --- Monitor snapshot (state query) contract ------------------------------- #
-def test_state_query_wire_shape():
-    obj = json.loads(QueryMessage(what="state").to_wire())
-    assert obj == {"type": "query", "what": "state"}
-
-
+# --- Monitor snapshot (push stream) contract ------------------------------- #
 def test_game_snapshot_field_names():
-    # Must match the DLL's stateResponse() serialization.
+    # Must match the DLL's stateLine() serialization.
     assert set(GameSnapshot().model_dump().keys()) == {
         "game_id",
         "round_active",
@@ -112,7 +72,7 @@ def test_game_snapshot_field_names():
 
 
 def test_game_snapshot_parses_dll_response():
-    # A line exactly as the DLL's stateResponse() would emit (two teams, worms).
+    # A line exactly as the DLL's stateLine() would emit (two teams, worms).
     line = (
         b'{"game_id":3,"round_active":true,"before_round_start":false,"num_teams":2,'
         b'"current_machine":0,"turn_team":0,"turn_time_ms":45000,"teams":['

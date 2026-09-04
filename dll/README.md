@@ -20,7 +20,7 @@ dll/
     ├── Constants.h         # TaskMessage / ClassType / Weapon enums
     ├── W2App.*             # game globals (GameGlobal, DdMain, TurnGame)
     ├── entities/           # CTask, CGameTask, CTaskTeam, CTaskTurnGame, CTaskWorm
-    ├── Protocol.*          # shared IPC wire contract (actions, TurnSnapshot)
+    ├── Protocol.*          # shared IPC wire contract (actions, GameSnapshot)
     ├── ControlState.*      # thread-safe command queue (IPC -> game thread)
     ├── ControlHooks.*      # per-frame hook: drain queue -> apply to worm
     └── IpcServer.*         # TCP server thread (backend <-> DLL)

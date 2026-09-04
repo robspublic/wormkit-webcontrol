@@ -63,18 +63,6 @@ Protocol::GameSnapshot buildSnapshot() {
         ts.is_turn_holder = (activeTeam >= 0 && team->team_number_dword38 == activeTeam);
         ts.is_local = team->isOwnedByMe();
 
-        // Diagnostic (temporary): how many direct children the team task has,
-        // and the classtype of the first, to confirm worm enumeration. Rate-
-        // limited since buildSnapshot runs every frame.
-        static int diagCounter = 0;
-        if ((diagCounter++ % 200) == 0) {
-            Log::info("team " + std::to_string(team->team_number_dword38) +
-                      " children=" + std::to_string(team->children.count) +
-                      " firstType=" + std::to_string(
-                          team->children.count > 0 && team->children.data
-                              ? (int)team->children.data[0]->classtype : -1));
-        }
-
         // A team's direct children are its worms. The reference casts each
         // child straight to CTaskWorm without a classtype filter, so we do the
         // same (a stale/wrong Worm classtype value would otherwise drop them
@@ -154,34 +142,4 @@ void ControlHooks::onGameTornDown() {
     // rather than the last game's stale data.
     std::lock_guard<std::mutex> lock(g_snapshotMutex);
     g_snapshot = Protocol::GameSnapshot{};
-}
-
-Protocol::GameSnapshot ControlHooks::snapshot_game() {
-    // Return the copy published on the game thread by onFrame(). Reading the
-    // live task tree from this (IPC) thread would race the game thread's
-    // in-place worm updates and yield frozen/torn values.
-    std::lock_guard<std::mutex> lock(g_snapshotMutex);
-    return g_snapshot;
-}
-
-Protocol::TurnSnapshot ControlHooks::snapshot_turn() {
-    Protocol::GameSnapshot g = snapshot_game();
-    Protocol::TurnSnapshot t;
-    t.round_active = g.round_active;
-    if (g.turn_team) {
-        t.turn_team = std::to_string(*g.turn_team);
-        // Report the turn-holding team's current/active worm position + weapon.
-        for (const auto& team : g.teams) {
-            if (team.team_number != *g.turn_team) continue;
-            for (const auto& w : team.worms) {
-                if (w.worm == team.current_worm || w.active) {
-                    t.pos_x = w.pos_x;
-                    t.pos_y = w.pos_y;
-                    t.weapon = w.weapon;
-                    break;
-                }
-            }
-        }
-    }
-    return t;
 }

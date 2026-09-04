@@ -24,13 +24,6 @@ public:
     // thread) avoids racing the game thread's in-place worm updates.
     static void onFrame();
 
-    // Read the latest game-state snapshot for the backend monitor query. Safe
-    // to call from the IPC thread: returns the copy published by onFrame().
-    static Protocol::GameSnapshot snapshot_game();
-
-    // Back-compat: the narrower "turn" view, derived from the game snapshot.
-    static Protocol::TurnSnapshot snapshot_turn();
-
     // Called when the game is torn down, so per-game state (turn tracking) is
     // cleared. Invoked from W2App::hookDestroyGameGlobal.
     static void onGameTornDown();

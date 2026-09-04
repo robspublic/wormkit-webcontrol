@@ -3,14 +3,11 @@ r"""IPC protocol shared between the backend and the wkWebControl DLL.
 Wire format: newline-delimited JSON over TCP loopback (127.0.0.1:27099).
 Each message is a single JSON object on one line.
 
-Backend -> DLL:
+Backend -> DLL (fire-and-forget commands):
     {"type": "cmd", "team": "Red", "action": "move_left", "value": 0}
-    {"type": "query", "what": "turn"}
-    {"type": "query", "what": "state"}   # full monitor snapshot
 
-DLL -> Backend (query responses):
-    turn:  {"turn_team": "Red", "pos_x": 1234, "pos_y": 567, "weapon": 3, ...}
-    state: {"round_active": true, "num_teams": 2, "teams": [ ... ], ...}
+DLL -> Backend (push stream, one snapshot line per game logic frame):
+    {"game_id": 3, "round_active": true, "num_teams": 2, "teams": [ ... ], ...}
 """
 
 from __future__ import annotations
@@ -45,39 +42,11 @@ class CommandMessage(BaseModel):
         return (json.dumps(self.model_dump(mode="json")) + "\n").encode("utf-8")
 
 
-class QueryMessage(BaseModel):
-    """A request for current game state (e.g. whose turn it is)."""
-
-    type: str = Field(default="query", frozen=True)
-    what: str = "turn"
-
-    def to_wire(self) -> bytes:
-        return (json.dumps(self.model_dump(mode="json")) + "\n").encode("utf-8")
-
-
-class TurnState(BaseModel):
-    """Current turn/worm state reported by the DLL.
-
-    All fields optional so a partial/early-game response still parses.
-    """
-
-    turn_team: str | None = None
-    pos_x: int | None = None
-    pos_y: int | None = None
-    weapon: int | None = None
-    round_active: bool = False
-
-    @classmethod
-    def from_wire(cls, line: bytes) -> "TurnState":
-        """Parse a JSON response line from the DLL."""
-        return cls.model_validate_json(line.decode("utf-8"))
-
-
 # --------------------------------------------------------------------------- #
-# Monitor snapshot (response to {"type":"query","what":"state"})
+# Monitor snapshot (pushed by the DLL, one line per game logic frame)
 #
 # Field names must match the DLL's Protocol serialization (dll/src/IpcServer.cpp
-# stateResponse() and dll/src/Protocol.h). Only high-confidence fields are
+# stateLine() and dll/src/Protocol.h). Only high-confidence fields are
 # included; team NAME and HEALTH are intentionally absent (no reliable offset).
 # --------------------------------------------------------------------------- #
 class WormInfo(BaseModel):

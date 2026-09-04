@@ -75,16 +75,6 @@ namespace Protocol {
         std::vector<TeamSnapshot> teams;
     };
 
-    // Back-compat: the original "turn" query still answers with these fields,
-    // derived from the snapshot (turn team + its active worm's position/weapon).
-    struct TurnSnapshot {
-        std::optional<std::string> turn_team;
-        std::optional<int> pos_x;
-        std::optional<int> pos_y;
-        std::optional<int> weapon;
-        bool round_active = false;
-    };
-
 } // namespace Protocol
 
 #endif // WKWEBCONTROL_PROTOCOL_H
