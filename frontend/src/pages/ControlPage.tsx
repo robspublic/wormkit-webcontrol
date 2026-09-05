@@ -154,11 +154,11 @@ export default function ControlPage() {
         </div>
 
         <div className="row">
-          <HoldButton className="btn aim" action="aim_up" press={press} release={release}>
-            ▲ Aim up
-          </HoldButton>
           <HoldButton className="btn aim" action="aim_down" press={press} release={release}>
             ▼ Aim down
+          </HoldButton>
+          <HoldButton className="btn aim" action="aim_up" press={press} release={release}>
+            ▲ Aim up
           </HoldButton>
         </div>
 
@@ -169,6 +169,7 @@ export default function ControlPage() {
             onClick={() => setShowWeapons((s) => !s)}
             aria-expanded={showWeapons}
           >
+            {!showWeapons && <WeaponIcon weaponId={selectedWeaponId} />}
             {showWeapons ? "Close weapons" : "Weapons"}
           </button>
           <button className="btn jump" onClick={() => send("jump", "press")}>
@@ -236,6 +237,43 @@ function HoldButton({
     >
       {children}
     </button>
+  );
+}
+
+// A small inline icon of a single weapon, cut from the same weapon-panel sprite
+// sheet as the palette. Used on the "Weapons" button to show the worm's
+// currently selected weapon. Renders nothing when no weapon is known.
+function WeaponIcon({ weaponId }: { weaponId: number | null }) {
+  if (weaponId === null) return null;
+  const slot = WEAPON_SLOTS.find((s) => s.weaponId === weaponId);
+  if (!slot) return null;
+
+  // Scale the native 28px tile down to fit comfortably beside the button label.
+  const scale = 1;
+  const tile = TILE_SIZE * scale;
+  const pitch = TILE_PITCH * scale;
+  const origin = TILE_ORIGIN * scale;
+  const gridW = PANEL_WIDTH * scale;
+  const gridH = PANEL_HEIGHT * scale;
+  const left = origin + slot.col * pitch;
+  const top = origin + slot.row * pitch;
+
+  return (
+    <span
+      className="weapon-icon"
+      aria-hidden="true"
+      style={{
+        display: "inline-block",
+        width: tile,
+        height: tile,
+        verticalAlign: "middle",
+        marginRight: 8,
+        backgroundImage: `url(${weaponPanelUrl})`,
+        backgroundRepeat: "no-repeat",
+        backgroundSize: `${gridW}px ${gridH}px`,
+        backgroundPosition: `-${left}px -${top}px`,
+      }}
+    />
   );
 }
 
@@ -332,19 +370,35 @@ function WeaponPalette({
             }
           }
 
+          // Mouse-only weapons need an in-game map click to aim (homing +
+          // airstrike family). We can't relay a map coordinate, so keep the
+          // tile's coloring and ammo badge for reference but block selection
+          // and mark it so the player knows to use the PC's mouse instead.
+          const mouseOnly = slot.mouseOnly;
+          const selectable = available && !mouseOnly;
+
           const cls =
             "weapon-tile" +
             (selected ? " selected" : "") +
-            (available ? "" : " unavailable");
+            (available ? "" : " unavailable") +
+            (mouseOnly ? " mouse-only" : "");
 
           return (
             <button
               key={`${slot.row}-${slot.col}`}
               className={cls}
-              title={slot.name}
-              aria-label={slot.name}
-              disabled={!available}
-              onClick={() => available && onSelect(slot.weaponId)}
+              title={
+                mouseOnly
+                  ? `${slot.name} — use the PC mouse to aim this weapon`
+                  : slot.name
+              }
+              aria-label={
+                mouseOnly
+                  ? `${slot.name}, not available from web control, use the PC mouse`
+                  : slot.name
+              }
+              disabled={!selectable}
+              onClick={() => selectable && onSelect(slot.weaponId)}
               style={{
                 position: "absolute",
                 left,
@@ -358,6 +412,11 @@ function WeaponPalette({
               }}
             >
               {badge && <span className="weapon-badge">{badge}</span>}
+              {mouseOnly && (
+                <span className="weapon-mouse-badge" aria-hidden="true">
+                  🖱
+                </span>
+              )}
             </button>
           );
         })}

@@ -307,6 +307,31 @@ body {
 .weapon-tile:disabled:active {
   transform: none;
 }
+/* Mouse-only weapons (homing + airstrike family): they need an in-game map
+   click to aim, which the web control can't relay. Keep the sprite coloring and
+   ammo badge for reference, but mark the tile and make it non-interactive so
+   the player knows to use the PC's mouse. A dashed outline plus the mouse badge
+   signal "look, but drive this one from the PC". */
+.weapon-tile.mouse-only {
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.5);
+  border-style: dashed;
+}
+.weapon-tile.mouse-only:active {
+  transform: none;
+}
+/* Mouse decoration, top-left corner, opposite the ammo badge. */
+.weapon-mouse-badge {
+  position: absolute;
+  left: 1px;
+  top: 0;
+  padding: 0 2px;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+  pointer-events: none;
+}
 /* Ammo count / deferred-round badge, bottom-right of the tile. */
 .weapon-badge {
   position: absolute;

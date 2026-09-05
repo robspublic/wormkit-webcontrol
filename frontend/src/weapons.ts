@@ -21,7 +21,24 @@ export interface WeaponSlot {
   weaponId: number; // WA Constants::Weapon enum id
   row: number; // 0-based grid row (0 = Util, 1 = F1, ... 12 = F12)
   col: number; // 0-based grid column (0..4)
+  mouseOnly: boolean; // needs an in-game map click (target crosshair) to deploy;
+  // the web interface can't relay a map coordinate, so these are shown but not
+  // selectable — the player must use the PC's mouse for them.
 }
+
+// Weapon ids that require clicking a location on the map to deploy (a targeting
+// crosshair opens after selection). Our web control only relays move/aim/fire,
+// never a map coordinate, so these can't be driven from the browser. They stay
+// visible (same coloring + ammo badge) but are marked and non-interactive.
+//   Homing weapons: Homing Missile (2), Homing Pigeon (4)
+//   Airstrike family: Air Strike (27), Napalm Strike (28), Mail Strike (29),
+//     Mine Strike (30), Mole Squadron (31), French Sheep Strike (50),
+//     Mike's Carpet Bomb (51)
+//   Construction (mouse-placed): Girder (34), Girder Starter Pack (36)
+//   Other target-click: Patsy's Magic Bullet (61)
+export const MOUSE_ONLY_WEAPON_IDS: ReadonlySet<number> = new Set([
+  2, 4, 27, 28, 29, 30, 31, 34, 36, 50, 51, 61,
+]);
 
 // Sprite-sheet geometry (weapon-panel.png, cropped to drop the row-label
 // column). Layout: 1px outer border, 28px tiles, 1px lines between tiles.
@@ -146,5 +163,11 @@ const ROWS: Array<Array<[string, number]>> = [
 ];
 
 export const WEAPON_SLOTS: WeaponSlot[] = ROWS.flatMap((cells, row) =>
-  cells.map(([name, weaponId], col) => ({ name, weaponId, row, col })),
+  cells.map(([name, weaponId], col) => ({
+    name,
+    weaponId,
+    row,
+    col,
+    mouseOnly: MOUSE_ONLY_WEAPON_IDS.has(weaponId),
+  })),
 );
