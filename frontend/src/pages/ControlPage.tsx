@@ -294,13 +294,18 @@ function WeaponPalette({
           const deferred = delay > 0 && round <= delay;
           const available = !hasData || (ammo !== 0 && !deferred);
 
-          // Badge: a still-locked deferred weapon shows the round it unlocks
-          // (e.g. "R2"); otherwise a finite count shows the count; infinite
-          // shows nothing.
+          // Badge:
+          //  - still-deferred: "(<rounds remaining>)" and, if it also has ammo,
+          //    " x<ammo>"  e.g. "(5) x1", or just "(2)" when ammo is 0.
+          //  - available finite: the count.  - infinite: nothing.
           let badge = "";
           if (hasData) {
-            if (deferred) badge = `R${delay + 1}`; // unlocks on round delay+1
-            else if (ammo > 0) badge = String(ammo);
+            if (deferred) {
+              const remaining = delay - round + 1; // rounds until round > delay
+              badge = `(${remaining})` + (ammo > 0 ? ` x${ammo}` : "");
+            } else if (ammo > 0) {
+              badge = String(ammo);
+            }
           }
 
           const cls =
