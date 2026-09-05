@@ -165,11 +165,11 @@ CTaskWorm* findActiveTurnWorm() {
 // we don't run). Zeroing 0x36C and leaving it caused the game to dereference a
 // null entry -> crash (read of [null+0x30]). So compute the entry pointer here,
 // exactly like the reference: entry = *(gameGlobal+0x510) + 464 * index.
-void dumpWeaponTable();  // TEMP (Tier 3 RE): defined below, called here.
+void dumpAmmoTable();  // TEMP (Tier 3 RE): defined below, called here.
 void applyWeapon(int weaponId) {
-    // TEMP diagnostic: dump the weapon table on each selection so we can decode
-    // the enabled/count field offsets. Remove once offsets are known.
-    dumpWeaponTable();
+    // TEMP diagnostic: dump the per-team ammo table on each selection so we can
+    // confirm the ammo/delay layout. Remove once confirmed and wired in.
+    dumpAmmoTable();
 
     // Guard the index to the known weapon-table range so we never point past
     // the table (an out-of-range entry would fault when the game reads it).
@@ -202,49 +202,59 @@ void applyWeapon(int weaponId) {
 // ReleaseWeapon exactly once on the press / release edge. Game-thread only.
 bool g_wasFiring = false;
 
-// ---- TEMPORARY diagnostic: weapon-table entry dump (Tier 3 RE) -------------
-// Dumps the raw bytes of selected weapon-table entries so we can match fields
-// against known in-game values (enabled/disabled, ammo count, deferred count).
-// Entry = *(gameGlobal+0x510) + 464 * id. Remove once offsets are decoded.
-char hexByte(unsigned v) { v &= 0xF; return (char)(v < 10 ? '0' + v : 'a' + (v - 10)); }
+// ---- TEMPORARY diagnostic: per-team ammo-table dump (Tier 3 RE) ------------
+// The shared weapon table (*(gameGlobal+0x510)) holds only static weapon defs,
+// NOT per-game ammo/enabled. The real per-team ammo lives in a separate flat
+// short[] "ammo table" (per reference/wkTerrainSync Missions.cpp):
+//   ammo  = *(short*)(addrAmmoTable + 2*(weapon + 143*team))
+//   delay = *(short*)(addrAmmoTable + 2*(weapon + 143*team) + 142)
+// ammo -1 = infinite, 0 = disabled/hidden, >0 = finite; delay = deferred rounds.
+// This dump prints ammo+delay for every weapon id (turn team) so we can confirm
+// the layout (esp. the odd +142 delay offset) against known in-game values.
+// Remove once confirmed and wired in.
 
-std::string hex32(DWORD v) {
-    std::string s = "0x";
-    for (int shift = 28; shift >= 0; shift -= 4) s += hexByte(v >> shift);
-    return s;
-}
+// Resolved ammo-table base (scanned once). 0 = not yet / scan failed.
+DWORD g_ammoTable = 0;
+bool  g_ammoScanTried = false;
 
-void dumpWeaponEntry(DWORD weaponTable, int id, const char* name) {
-    DWORD entry = weaponTable + 464u * (DWORD)id;
-    // Dump the first 96 bytes as 24 DWORDs (offset -> value). The count/enabled
-    // fields are almost certainly within the first few dwords.
-    std::string line = "WPN id=" + std::to_string(id) + " " + name + " @" + hex32(entry);
-    Log::info(line);
-    for (int off = 0; off < 96; off += 4) {
-        DWORD val = *(DWORD*)(entry + (DWORD)off);
-        Log::info("  +0x" + std::string(1, hexByte((unsigned)off >> 4)) +
-                  std::string(1, hexByte((unsigned)off)) + " = " + hex32(val) +
-                  " (" + std::to_string((int)val) + ")");
+// Resolve addrAmmoTable via the ReadAmmoFromWAM scan (same as wkTerrainSync).
+// Wrapped so a failed scan just disables the dump instead of aborting.
+DWORD resolveAmmoTable() {
+    if (g_ammoScanTried) return g_ammoTable;
+    g_ammoScanTried = true;
+    try {
+        DWORD addrReadAmmoFromWAM = _ScanPattern(
+            "ReadAmmoFromWAM",
+            "\x8B\x40\x0C\x56\x8B\x74\x24\x10\x57\x8B\x7C\x24\x0C\x50\x6A\x00\x51\x57\xFF\x15\x00\x00\x00\x00\x69\xF6\x00\x00\x00\x00\x03\x74\x24\x10\x0F\xB7\x14\x75\x00\x00\x00\x00\x66\x83\xFA\xFF",
+            "??????xxxxxxxxxxxxxx????xx????xxxxxxxx????xxxx");
+        g_ammoTable = *(DWORD*)(addrReadAmmoFromWAM + 0x26);
+    } catch (...) {
+        Log::warn("ammo-table scan (ReadAmmoFromWAM) failed; dump disabled");
+        g_ammoTable = 0;
     }
+    return g_ammoTable;
 }
 
-// Dump a curated set of weapons the user can give ground-truth for. Called from
-// applyWeapon so tapping any weapon in the web UI triggers a fresh dump.
-void dumpWeaponTable() {
-    DWORD gg = W2App::getAddrGameGlobal();
-    if (gg == 0) return;
-    DWORD weaponTable = *(DWORD*)(gg + 0x510);
-    if (weaponTable == 0) return;
+// Dump ammo + delay for all weapon ids of the current turn team. Compact: one
+// line per weapon so the dev console (limited scrollback) keeps the whole set.
+void dumpAmmoTable() {
+    DWORD ammoTable = resolveAmmoTable();
+    if (ammoTable == 0) return;
 
-    Log::info("==== weapon-table dump (base=" + hex32(weaponTable) + ") ====");
-    struct { int id; const char* name; } sample[] = {
-        {1, "Bazooka"}, {2, "HomingMissile"}, {3, "Mortar"}, {4, "HomingPigeon"},
-        {6, "Grenade"}, {7, "ClusterBomb"}, {8, "BananaBomb"},
-        {21, "Dynamite"}, {22, "Mine"}, {40, "Teleport"},
-        {43, "HolyGrenade"}, {57, "SkipGo"},
-    };
-    for (auto& w : sample) dumpWeaponEntry(weaponTable, w.id, w.name);
-    Log::info("==== end weapon-table dump ====");
+    const int team = CTaskTurnGame::currentTurnTeam();
+    if (team < 0) return;
+
+    Log::info("==== ammo-table dump (base=" + std::to_string(ammoTable) +
+              " team=" + std::to_string(team) + ") ====");
+    // Weapon ids 1..70 cover the whole panel (Bazooka..CrateShower).
+    for (int w = 1; w <= 70; ++w) {
+        short ammo  = *(short*)(ammoTable + 2 * (w + 143 * team));
+        short delay = *(short*)(ammoTable + 2 * (w + 143 * team) + 142);
+        Log::info("  w=" + std::to_string(w) +
+                  " ammo=" + std::to_string((int)ammo) +
+                  " delay=" + std::to_string((int)delay));
+    }
+    Log::info("==== end ammo-table dump ====");
 }
 
 // Translate the current held-input state into per-frame WA input messages.
