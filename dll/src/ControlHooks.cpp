@@ -165,6 +165,7 @@ CTaskWorm* findActiveTurnWorm() {
 // we don't run). Zeroing 0x36C and leaving it caused the game to dereference a
 // null entry -> crash (read of [null+0x30]). So compute the entry pointer here,
 // exactly like the reference: entry = *(gameGlobal+0x510) + 464 * index.
+void dumpWeaponTable();  // TEMP (Tier 3 RE): defined below, called here.
 void applyWeapon(int weaponId) {
     // TEMP diagnostic: dump the weapon table on each selection so we can decode
     // the enabled/count field offsets. Remove once offsets are known.
