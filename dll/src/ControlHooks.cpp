@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <mutex>
+#include <string>
 
 #include "ControlState.h"
 #include "W2App.h"
@@ -165,6 +166,10 @@ CTaskWorm* findActiveTurnWorm() {
 // null entry -> crash (read of [null+0x30]). So compute the entry pointer here,
 // exactly like the reference: entry = *(gameGlobal+0x510) + 464 * index.
 void applyWeapon(int weaponId) {
+    // TEMP diagnostic: dump the weapon table on each selection so we can decode
+    // the enabled/count field offsets. Remove once offsets are known.
+    dumpWeaponTable();
+
     // Guard the index to the known weapon-table range so we never point past
     // the table (an out-of-range entry would fault when the game reads it).
     if (weaponId < 1 || weaponId > 70) return;
@@ -195,6 +200,51 @@ void applyWeapon(int weaponId) {
 // Was the fire button held on the previous frame? Used to emit FireWeapon /
 // ReleaseWeapon exactly once on the press / release edge. Game-thread only.
 bool g_wasFiring = false;
+
+// ---- TEMPORARY diagnostic: weapon-table entry dump (Tier 3 RE) -------------
+// Dumps the raw bytes of selected weapon-table entries so we can match fields
+// against known in-game values (enabled/disabled, ammo count, deferred count).
+// Entry = *(gameGlobal+0x510) + 464 * id. Remove once offsets are decoded.
+char hexByte(unsigned v) { v &= 0xF; return (char)(v < 10 ? '0' + v : 'a' + (v - 10)); }
+
+std::string hex32(DWORD v) {
+    std::string s = "0x";
+    for (int shift = 28; shift >= 0; shift -= 4) s += hexByte(v >> shift);
+    return s;
+}
+
+void dumpWeaponEntry(DWORD weaponTable, int id, const char* name) {
+    DWORD entry = weaponTable + 464u * (DWORD)id;
+    // Dump the first 96 bytes as 24 DWORDs (offset -> value). The count/enabled
+    // fields are almost certainly within the first few dwords.
+    std::string line = "WPN id=" + std::to_string(id) + " " + name + " @" + hex32(entry);
+    Log::info(line);
+    for (int off = 0; off < 96; off += 4) {
+        DWORD val = *(DWORD*)(entry + (DWORD)off);
+        Log::info("  +0x" + std::string(1, hexByte((unsigned)off >> 4)) +
+                  std::string(1, hexByte((unsigned)off)) + " = " + hex32(val) +
+                  " (" + std::to_string((int)val) + ")");
+    }
+}
+
+// Dump a curated set of weapons the user can give ground-truth for. Called from
+// applyWeapon so tapping any weapon in the web UI triggers a fresh dump.
+void dumpWeaponTable() {
+    DWORD gg = W2App::getAddrGameGlobal();
+    if (gg == 0) return;
+    DWORD weaponTable = *(DWORD*)(gg + 0x510);
+    if (weaponTable == 0) return;
+
+    Log::info("==== weapon-table dump (base=" + hex32(weaponTable) + ") ====");
+    struct { int id; const char* name; } sample[] = {
+        {1, "Bazooka"}, {2, "HomingMissile"}, {3, "Mortar"}, {4, "HomingPigeon"},
+        {6, "Grenade"}, {7, "ClusterBomb"}, {8, "BananaBomb"},
+        {21, "Dynamite"}, {22, "Mine"}, {40, "Teleport"},
+        {43, "HolyGrenade"}, {57, "SkipGo"},
+    };
+    for (auto& w : sample) dumpWeaponEntry(weaponTable, w.id, w.name);
+    Log::info("==== end weapon-table dump ====");
+}
 
 // Translate the current held-input state into per-frame WA input messages.
 // Movement/aim are level-triggered (re-sent every frame while held); fire is
