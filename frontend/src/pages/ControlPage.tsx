@@ -284,14 +284,17 @@ function WeaponPalette({
           const hasData = ammoById.size > 0;
           const ammo = avail?.ammo ?? -1;
           const delay = avail?.delay ?? 0;
-          const available = !hasData || ammo !== 0;
+          // Available only when it has ammo AND isn't deferred. A weapon with a
+          // delay > 0 is locked this round even if it already has ammo (e.g.
+          // Homing Missile ammo=1 delay=1 on round 1).
+          const available = !hasData || (ammo !== 0 && delay === 0);
 
-          // Badge text: infinite shows nothing, finite shows the count, and an
-          // unavailable-but-deferred weapon shows the rounds until it unlocks.
+          // Badge text: a deferred weapon shows the rounds until it unlocks;
+          // otherwise a finite count shows the count; infinite shows nothing.
           let badge = "";
           if (hasData) {
-            if (ammo > 0) badge = String(ammo);
-            else if (ammo === 0 && delay > 0) badge = `${delay}\u25CB`; // "N○" = in N rounds
+            if (delay > 0) badge = `${delay}\u25CB`; // "N○" = unlocks in N rounds
+            else if (ammo > 0) badge = String(ammo);
           }
 
           const cls =
