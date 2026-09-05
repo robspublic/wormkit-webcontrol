@@ -88,6 +88,7 @@ namespace Protocol {
         bool round_active = false;       // a game/match is loaded (GameGlobal != 0)
         bool before_round_start = false; // worms still being placed
         int num_teams = 0;
+        int round = 0;                   // 1-based round counter (0 = unknown)
         int current_machine = -1;        // machine id currently holding the turn
         std::optional<int> turn_team;    // team_number of the turn holder, if known
         std::optional<int> turn_time_ms; // turn timer (ms), if in a game

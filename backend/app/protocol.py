@@ -100,6 +100,7 @@ class GameSnapshot(BaseModel):
     round_active: bool = False
     before_round_start: bool = False
     num_teams: int = 0
+    round: int = 0  # 1-based round counter (0 = unknown)
     current_machine: int = -1
     turn_team: int | None = None
     turn_time_ms: int | None = None

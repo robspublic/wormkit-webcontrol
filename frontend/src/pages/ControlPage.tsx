@@ -180,6 +180,7 @@ export default function ControlPage() {
           <WeaponPalette
             selectedWeaponId={selectedWeaponId}
             ammoById={ammoById}
+            round={snap?.round ?? 0}
             onSelect={(weaponId) => {
               send("select_weapon", "press", weaponId);
               setShowWeapons(false);
@@ -245,10 +246,12 @@ function HoldButton({
 function WeaponPalette({
   selectedWeaponId,
   ammoById,
+  round,
   onSelect,
 }: {
   selectedWeaponId: number | null;
   ammoById: Map<number, { ammo: number; delay: number }>;
+  round: number;
   onSelect: (weaponId: number) => void;
 }) {
   // Render at 3x so 28px tiles are comfortably tappable. Tiles are absolutely
@@ -284,16 +287,19 @@ function WeaponPalette({
           const hasData = ammoById.size > 0;
           const ammo = avail?.ammo ?? -1;
           const delay = avail?.delay ?? 0;
-          // Available only when it has ammo AND isn't deferred. A weapon with a
-          // delay > 0 is locked this round even if it already has ammo (e.g.
-          // Homing Missile ammo=1 delay=1 on round 1).
-          const available = !hasData || (ammo !== 0 && delay === 0);
+          // `delay` is a constant "available after N rounds" threshold, not a
+          // countdown, so compare it to the current round. A weapon with delay
+          // N is locked until round > N (e.g. Homing Missile delay=1 unlocks on
+          // round 2). It's usable once it has ammo AND the delay has elapsed.
+          const deferred = delay > 0 && round <= delay;
+          const available = !hasData || (ammo !== 0 && !deferred);
 
-          // Badge text: a deferred weapon shows the rounds until it unlocks;
-          // otherwise a finite count shows the count; infinite shows nothing.
+          // Badge: a still-locked deferred weapon shows the round it unlocks
+          // (e.g. "R2"); otherwise a finite count shows the count; infinite
+          // shows nothing.
           let badge = "";
           if (hasData) {
-            if (delay > 0) badge = `${delay}\u25CB`; // "N○" = unlocks in N rounds
+            if (deferred) badge = `R${delay + 1}`; // unlocks on round delay+1
             else if (ammo > 0) badge = String(ammo);
           }
 

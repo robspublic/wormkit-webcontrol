@@ -78,6 +78,7 @@ def test_game_snapshot_field_names():
         "round_active",
         "before_round_start",
         "num_teams",
+        "round",
         "current_machine",
         "turn_team",
         "turn_time_ms",
@@ -112,7 +113,7 @@ def test_game_snapshot_parses_dll_response():
     # A line exactly as the DLL's stateLine() would emit (two teams, worms).
     line = (
         b'{"game_id":3,"round_active":true,"before_round_start":false,"num_teams":2,'
-        b'"current_machine":0,"turn_team":0,"turn_time_ms":45000,"teams":['
+        b'"round":2,"current_machine":0,"turn_team":0,"turn_time_ms":45000,"teams":['
         b'{"team_number":0,"owner":0,"current_worm":1,"is_turn_holder":true,'
         b'"is_local":true,"worms":['
         b'{"team":0,"worm":1,"active":true,"pos_x":1200,"pos_y":800,"weapon":0,"facing":1}]},'
@@ -124,6 +125,7 @@ def test_game_snapshot_parses_dll_response():
     snap = GameSnapshot.from_wire(line)
     assert snap.round_active is True
     assert snap.num_teams == 2
+    assert snap.round == 2
     assert snap.turn_team == 0
     assert len(snap.teams) == 2
     assert snap.teams[0].is_turn_holder is True

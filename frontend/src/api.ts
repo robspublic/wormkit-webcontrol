@@ -72,6 +72,7 @@ export interface GameSnapshot {
   round_active: boolean;
   before_round_start: boolean;
   num_teams: number;
+  round: number; // 1-based round counter (0 = unknown)
   current_machine: number;
   turn_team: number | null;
   turn_time_ms: number | null;

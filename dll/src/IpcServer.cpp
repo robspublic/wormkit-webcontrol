@@ -67,6 +67,7 @@ namespace {
         j["round_active"] = s.round_active;
         j["before_round_start"] = s.before_round_start;
         j["num_teams"] = s.num_teams;
+        j["round"] = s.round;
         j["current_machine"] = s.current_machine;
         j["turn_team"] = s.turn_team ? json(*s.turn_team) : json(nullptr);
         j["turn_time_ms"] = s.turn_time_ms ? json(*s.turn_time_ms) : json(nullptr);

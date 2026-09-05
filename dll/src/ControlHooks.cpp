@@ -48,6 +48,7 @@ Protocol::GameSnapshot buildSnapshot() {
         return snap;
     }
     snap.num_teams = tg->number_of_teams_dword7C;
+    snap.round = tg->round_number_dword130;
     snap.before_round_start = tg->its_before_round_start_dword140 != 0;
     snap.turn_time_ms = tg->turn_timer1_unknown188;
 
@@ -171,10 +172,7 @@ CTaskWorm* findActiveTurnWorm() {
 // we don't run). Zeroing 0x36C and leaving it caused the game to dereference a
 // null entry -> crash (read of [null+0x30]). So compute the entry pointer here,
 // exactly like the reference: entry = *(gameGlobal+0x510) + 464 * index.
-void dumpDelayDiag();  // TEMP (delay-vs-round decode): defined below.
 void applyWeapon(int weaponId) {
-    dumpDelayDiag();  // TEMP: capture delay + round counters on each select.
-
     // Guard the index to the known weapon-table range so we never point past
     // the table (an out-of-range entry would fault when the game reads it).
     if (weaponId < 1 || weaponId > 70) return;
@@ -253,46 +251,6 @@ void readTurnTeamWeapons(Protocol::GameSnapshot& snap) {
         wa.delay = (int)*(short*)(ammoTable + 2 * (w + 143 * team) + 142);
         snap.weapons.push_back(wa);
     }
-}
-
-// ---- TEMPORARY diagnostic: delay vs round decode --------------------------
-// Homing Missile (delay=1) still showed disabled on round 2. Hypothesis: delay
-// is a constant "available after N rounds" threshold, not a countdown. Dump a
-// couple deferred weapons' ammo/delay plus candidate round/frame counters on
-// each weapon-select, captured on round 1 and round 2, to decode the rule.
-void dumpDelayDiag() {
-    DWORD ammoTable = resolveAmmoTable();
-    const int team = CTaskTurnGame::currentTurnTeam();
-    if (ammoTable == 0 || team < 0) return;
-    DWORD gg = W2App::getAddrGameGlobal();
-    DWORD tg = W2App::getAddrTurnGame();
-
-    auto ad = [&](int w) {
-        short a = *(short*)(ammoTable + 2 * (w + 143 * team));
-        short d = *(short*)(ammoTable + 2 * (w + 143 * team) + 142);
-        return "w=" + std::to_string(w) + " ammo=" + std::to_string((int)a) +
-               " delay=" + std::to_string((int)d);
-    };
-    Log::info("==== delay-diag team=" + std::to_string(team) + " ====");
-    Log::info("  HomingMissile " + ad(2));
-    // Hunt for the ROUND counter: dump turn-game and gameGlobal DWORDs, but only
-    // those holding a small plausible round number (0..99), so the round counter
-    // (which should read 1 on turn 1 and 2 on the next same-team turn) stands
-    // out. Compare the two captures for a field that incremented by exactly 1.
-    auto dumpSmall = [&](const char* what, DWORD base, int lo, int hi) {
-        if (!base) return;
-        for (int off = lo; off <= hi; off += 4) {
-            int v = (int)*(DWORD*)(base + (DWORD)off);
-            if (v >= 0 && v <= 99) {
-                Log::info(std::string("  ") + what + "+0x" +
-                          std::to_string(off) + " = " + std::to_string(v));
-            }
-        }
-    };
-    // Turn-game: scan 0x30..0x2E0 (its mapped range). gameGlobal: a modest band.
-    dumpSmall("tg", tg, 0x30, 0x2E0);
-    dumpSmall("gg", gg, 0x7200, 0x7300);  // near the machine-id / turn area
-    Log::info("==== end delay-diag ====");
 }
 
 // Translate the current held-input state into per-frame WA input messages.
