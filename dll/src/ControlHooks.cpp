@@ -171,7 +171,10 @@ CTaskWorm* findActiveTurnWorm() {
 // we don't run). Zeroing 0x36C and leaving it caused the game to dereference a
 // null entry -> crash (read of [null+0x30]). So compute the entry pointer here,
 // exactly like the reference: entry = *(gameGlobal+0x510) + 464 * index.
+void dumpDelayDiag();  // TEMP (delay-vs-round decode): defined below.
 void applyWeapon(int weaponId) {
+    dumpDelayDiag();  // TEMP: capture delay + round counters on each select.
+
     // Guard the index to the known weapon-table range so we never point past
     // the table (an out-of-range entry would fault when the game reads it).
     if (weaponId < 1 || weaponId > 70) return;
@@ -250,6 +253,39 @@ void readTurnTeamWeapons(Protocol::GameSnapshot& snap) {
         wa.delay = (int)*(short*)(ammoTable + 2 * (w + 143 * team) + 142);
         snap.weapons.push_back(wa);
     }
+}
+
+// ---- TEMPORARY diagnostic: delay vs round decode --------------------------
+// Homing Missile (delay=1) still showed disabled on round 2. Hypothesis: delay
+// is a constant "available after N rounds" threshold, not a countdown. Dump a
+// couple deferred weapons' ammo/delay plus candidate round/frame counters on
+// each weapon-select, captured on round 1 and round 2, to decode the rule.
+void dumpDelayDiag() {
+    DWORD ammoTable = resolveAmmoTable();
+    const int team = CTaskTurnGame::currentTurnTeam();
+    if (ammoTable == 0 || team < 0) return;
+    DWORD gg = W2App::getAddrGameGlobal();
+    DWORD tg = W2App::getAddrTurnGame();
+
+    auto ad = [&](int w) {
+        short a = *(short*)(ammoTable + 2 * (w + 143 * team));
+        short d = *(short*)(ammoTable + 2 * (w + 143 * team) + 142);
+        return "w=" + std::to_string(w) + " ammo=" + std::to_string((int)a) +
+               " delay=" + std::to_string((int)d);
+    };
+    Log::info("==== delay-diag team=" + std::to_string(team) + " ====");
+    Log::info("  HomingMissile " + ad(2));
+    Log::info("  HomingPigeon  " + ad(4));
+    Log::info("  HolyGrenade   " + ad(43));
+    // Candidate round/frame counters.
+    if (gg) {
+        Log::info("  gg+0x5CC(frame?) = " + std::to_string((int)*(DWORD*)(gg + 0x5CC)));
+    }
+    if (tg) {
+        Log::info("  tg+0x184(roundTimer?) = " +
+                  std::to_string((int)*(DWORD*)(tg + 0x184)));
+    }
+    Log::info("==== end delay-diag ====");
 }
 
 // Translate the current held-input state into per-frame WA input messages.
