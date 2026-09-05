@@ -293,8 +293,10 @@ function WeaponPalette({
           // round 2). It's usable once it has ammo AND the delay has elapsed.
           const deferred = delay > 0 && round <= delay;
           // ammo == 0 means the weapon isn't in this game at all -> hide it.
+          // ammo == -1 means infinite. "has ammo" is therefore ammo != 0.
           const hidden = hasData && ammo === 0;
-          const available = !hasData || (ammo > 0 && !deferred);
+          const hasAmmo = ammo !== 0; // >0 finite, or -1 infinite
+          const available = !hasData || (hasAmmo && !deferred);
 
           // Exact source position of this tile within the sprite (in px),
           // scaled up: left/top of the 28px tile = origin + index*pitch.
@@ -314,17 +316,19 @@ function WeaponPalette({
             );
           }
 
-          // Badge:
-          //  - deferred (ammo > 0): "(<rounds remaining>) x<ammo>"  e.g. "(5) x1"
-          //  - available finite:    "x<ammo>"
-          //  - infinite / no data:  nothing
+          // Badge (only when the weapon has ammo; ammo==0 tiles are hidden):
+          //  - deferred:          "(<rounds remaining>)" + " x<ammo>" if finite
+          //                       e.g. "(5) x1" (finite) or "(5)" (infinite)
+          //  - available finite:  "x<ammo>"
+          //  - available infinite / no data:  nothing
           let badge = "";
-          if (hasData && ammo > 0) {
+          if (hasData && hasAmmo) {
+            const count = ammo > 0 ? ` x${ammo}` : ""; // infinite -> no count
             if (deferred) {
               const remaining = delay - round + 1; // rounds until round > delay
-              badge = `(${remaining}) x${ammo}`;
+              badge = `(${remaining})${count}`;
             } else {
-              badge = `x${ammo}`;
+              badge = count.trim();
             }
           }
 
