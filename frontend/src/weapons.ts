@@ -23,13 +23,18 @@ export interface WeaponSlot {
   col: number; // 0-based grid column (0..4)
 }
 
-// Sprite-sheet geometry.
+// Sprite-sheet geometry (weapon-panel.png, cropped to drop the row-label
+// column). Layout: 1px outer border, 28px tiles, 1px lines between tiles.
+//   width  = 1 + 5*28 + 4*1 + 1 = 146
+//   height = 1 + 13*28 + 12*1 + 1 = 378
+// So tiles are 28x28 on a 29px pitch, with the first tile at offset (1,1).
 export const PANEL_COLS = 5;
 export const PANEL_ROWS = 13;
-export const PANEL_WIDTH = 180;
-export const PANEL_HEIGHT = 380;
-export const CELL_WIDTH = PANEL_WIDTH / PANEL_COLS; // 36
-export const CELL_HEIGHT = PANEL_HEIGHT / PANEL_ROWS; // ~29.23
+export const PANEL_WIDTH = 146;
+export const PANEL_HEIGHT = 378;
+export const TILE_SIZE = 28; // px, actual weapon image
+export const TILE_PITCH = 29; // px, tile + 1px separator line
+export const TILE_ORIGIN = 1; // px, top/left border before the first tile
 
 // The 13 rows of the panel, top to bottom, each a list of 5 [name, weaponId].
 // weaponId values are the reference Constants::Weapon enum (Bazooka=1 ...).

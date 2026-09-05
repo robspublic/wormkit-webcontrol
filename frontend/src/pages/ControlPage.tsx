@@ -13,10 +13,9 @@ import {
   WEAPON_SLOTS,
   PANEL_WIDTH,
   PANEL_HEIGHT,
-  CELL_WIDTH,
-  CELL_HEIGHT,
-  PANEL_COLS,
-  PANEL_ROWS,
+  TILE_SIZE,
+  TILE_PITCH,
+  TILE_ORIGIN,
   type WeaponSlot,
 } from "../weapons";
 import weaponPanelUrl from "../assets/weapon-panel.png";
@@ -98,6 +97,11 @@ export default function ControlPage() {
     myTeamInfo?.worms[0]?.weapon ??
     null;
 
+  // Per-weapon availability for the turn team, keyed by weapon id.
+  const ammoById = new Map<number, { ammo: number; delay: number }>(
+    (snap?.weapons ?? []).map((w) => [w.id, { ammo: w.ammo, delay: w.delay }]),
+  );
+
   // If the turn is lost (or the round ends) while holding a button, release it
   // so a worm doesn't keep walking/charging after control is gone.
   useEffect(() => {
@@ -175,6 +179,7 @@ export default function ControlPage() {
         {showWeapons && (
           <WeaponPalette
             selectedWeaponId={selectedWeaponId}
+            ammoById={ammoById}
             onSelect={(weaponId) => {
               send("select_weapon", "press", weaponId);
               setShowWeapons(false);
@@ -239,66 +244,90 @@ function HoldButton({
 // match so the sprite lines up.
 function WeaponPalette({
   selectedWeaponId,
+  ammoById,
   onSelect,
 }: {
   selectedWeaponId: number | null;
+  ammoById: Map<number, { ammo: number; delay: number }>;
   onSelect: (weaponId: number) => void;
 }) {
-  // Render tiles at 2x the native cell so they're comfortably tappable.
-  const scale = 2;
-  const tileW = CELL_WIDTH * scale;
-  const tileH = CELL_HEIGHT * scale;
-  const gridW = PANEL_COLS * tileW;
-  const gridH = PANEL_ROWS * tileH;
+  // Render at 3x so 28px tiles are comfortably tappable. Tiles are absolutely
+  // positioned from their exact source coords (origin + col*pitch) so the 1px
+  // borders/separators in the sprite are reproduced faithfully.
+  const scale = 3;
+  const tile = TILE_SIZE * scale;
+  const pitch = TILE_PITCH * scale;
+  const origin = TILE_ORIGIN * scale;
+  const gridW = PANEL_WIDTH * scale;
+  const gridH = PANEL_HEIGHT * scale;
 
   return (
     <div className="weapon-palette">
-      {/* The grid area is contiguous (no gap/padding) so the alignment overlay
-          lines up exactly with tile/cell boundaries. */}
       <div
         className="weapon-grid"
         style={{
           position: "relative",
           width: gridW,
           height: gridH,
-          display: "grid",
-          gridTemplateColumns: `repeat(${PANEL_COLS}, ${tileW}px)`,
-          gridTemplateRows: `repeat(${PANEL_ROWS}, ${tileH}px)`,
+          // Full sprite behind the tiles so the 1px borders/separator lines
+          // between tiles show through the gaps (faithful panel look).
+          backgroundImage: `url(${weaponPanelUrl})`,
+          backgroundRepeat: "no-repeat",
+          backgroundSize: `${gridW}px ${gridH}px`,
         }}
       >
         {WEAPON_SLOTS.map((slot: WeaponSlot) => {
           const selected = selectedWeaponId === slot.weaponId;
+          const avail = ammoById.get(slot.weaponId);
+          // If we have no availability data at all (empty snapshot), leave tiles
+          // enabled so the palette still works. With data, ammo==0 = unavailable.
+          const hasData = ammoById.size > 0;
+          const ammo = avail?.ammo ?? -1;
+          const delay = avail?.delay ?? 0;
+          const available = !hasData || ammo !== 0;
+
+          // Badge text: infinite shows nothing, finite shows the count, and an
+          // unavailable-but-deferred weapon shows the rounds until it unlocks.
+          let badge = "";
+          if (hasData) {
+            if (ammo > 0) badge = String(ammo);
+            else if (ammo === 0 && delay > 0) badge = `${delay}\u25CB`; // "N○" = in N rounds
+          }
+
+          const cls =
+            "weapon-tile" +
+            (selected ? " selected" : "") +
+            (available ? "" : " unavailable");
+
+          // Exact source position of this tile within the sprite (in px),
+          // scaled up: left/top of the 28px tile = origin + index*pitch.
+          const left = origin + slot.col * pitch;
+          const top = origin + slot.row * pitch;
+
           return (
             <button
               key={`${slot.row}-${slot.col}`}
-              className={`weapon-tile${selected ? " selected" : ""}`}
+              className={cls}
               title={slot.name}
               aria-label={slot.name}
-              onClick={() => onSelect(slot.weaponId)}
+              disabled={!available}
+              onClick={() => available && onSelect(slot.weaponId)}
               style={{
-                width: tileW,
-                height: tileH,
+                position: "absolute",
+                left,
+                top,
+                width: tile,
+                height: tile,
                 backgroundImage: `url(${weaponPanelUrl})`,
                 backgroundRepeat: "no-repeat",
-                backgroundSize: `${PANEL_WIDTH * scale}px ${PANEL_HEIGHT * scale}px`,
-                backgroundPosition: `-${slot.col * tileW}px -${slot.row * tileH}px`,
+                backgroundSize: `${gridW}px ${gridH}px`,
+                backgroundPosition: `-${left}px -${top}px`,
               }}
-            />
+            >
+              {badge && <span className="weapon-badge">{badge}</span>}
+            </button>
           );
         })}
-
-        {/* Alignment overlay: dark-green lines at every cell boundary. Purely
-            visual (pointer-events: none) so it doesn't block tile taps. */}
-        <div
-          className="weapon-grid-overlay"
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            backgroundImage: `repeating-linear-gradient(to right, #0a5c1e 0, #0a5c1e 1px, transparent 1px, transparent ${tileW}px), repeating-linear-gradient(to bottom, #0a5c1e 0, #0a5c1e 1px, transparent 1px, transparent ${tileH}px)`,
-          }}
-        />
       </div>
     </div>
   );

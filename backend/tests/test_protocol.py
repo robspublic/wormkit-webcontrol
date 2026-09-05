@@ -15,6 +15,7 @@ from app.protocol import (
     ControlPhase,
     GameSnapshot,
     TeamInfo,
+    WeaponAmmo,
     WormInfo,
 )
 
@@ -81,6 +82,12 @@ def test_game_snapshot_field_names():
         "turn_team",
         "turn_time_ms",
         "teams",
+        "weapons",
+    }
+    assert set(WeaponAmmo(id=1).model_dump().keys()) == {
+        "id",
+        "ammo",
+        "delay",
     }
     assert set(TeamInfo(team_number=0).model_dump().keys()) == {
         "team_number",
@@ -110,7 +117,9 @@ def test_game_snapshot_parses_dll_response():
         b'"is_local":true,"worms":['
         b'{"team":0,"worm":1,"active":true,"pos_x":1200,"pos_y":800,"weapon":0,"facing":1}]},'
         b'{"team_number":1,"owner":1,"current_worm":1,"is_turn_holder":false,'
-        b'"is_local":false,"worms":[]}]}'
+        b'"is_local":false,"worms":[]}],'
+        b'"weapons":[{"id":1,"ammo":-1,"delay":0},{"id":2,"ammo":1,"delay":1},'
+        b'{"id":43,"ammo":0,"delay":4}]}'
     )
     snap = GameSnapshot.from_wire(line)
     assert snap.round_active is True
@@ -120,6 +129,20 @@ def test_game_snapshot_parses_dll_response():
     assert snap.teams[0].is_turn_holder is True
     assert snap.teams[0].worms[0].pos_x == 1200
     assert snap.teams[1].worms == []
+    # Weapon availability: infinite (-1), finite deferred (1 ammo / 1 round),
+    # and unavailable-but-deferred (0 ammo / 4 rounds).
+    assert [(w.id, w.ammo, w.delay) for w in snap.weapons] == [
+        (1, -1, 0),
+        (2, 1, 1),
+        (43, 0, 4),
+    ]
+
+
+def test_game_snapshot_weapons_default_empty():
+    # A snapshot line without a weapons array parses with weapons == [].
+    line = b'{"round_active":true,"num_teams":1,"turn_team":0,"teams":[]}'
+    snap = GameSnapshot.from_wire(line)
+    assert snap.weapons == []
 
 
 def test_game_snapshot_no_game():

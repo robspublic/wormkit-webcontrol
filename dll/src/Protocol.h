@@ -74,6 +74,15 @@ namespace Protocol {
         std::vector<WormSnapshot> worms;
     };
 
+    // Per-weapon availability for the current turn team, read from WA's ammo
+    // table. ammo: -1 = infinite, 0 = unavailable this round, >0 = finite count.
+    // delay: number of rounds until it becomes available (0 = now / n/a).
+    struct WeaponAmmo {
+        int id = 0;     // WA weapon id (1..70)
+        int ammo = 0;
+        int delay = 0;
+    };
+
     struct GameSnapshot {
         int game_id = 0;                 // increments each new game (0 = none yet)
         bool round_active = false;       // a game/match is loaded (GameGlobal != 0)
@@ -83,6 +92,8 @@ namespace Protocol {
         std::optional<int> turn_team;    // team_number of the turn holder, if known
         std::optional<int> turn_time_ms; // turn timer (ms), if in a game
         std::vector<TeamSnapshot> teams;
+        // Weapon availability for the turn team (empty if unknown / no turn).
+        std::vector<WeaponAmmo> weapons;
     };
 
 } // namespace Protocol

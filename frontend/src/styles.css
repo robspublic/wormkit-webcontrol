@@ -1,7 +1,7 @@
 :root {
   --bg: #12161c;
   --panel: #1c232c;
-  --accent: #4caf50;
+  --accent: #83f886;
   --danger: #c0392b;
   --text: #e6edf3;
   --muted: #8b98a5;
@@ -270,14 +270,12 @@ body {
   background: #000;
   border-radius: 10px;
 }
-/* Contiguous grid area (no gap) so the alignment overlay lines up exactly.
-   A dark-green right/bottom border closes the outer edges the overlay's
-   leading lines don't cover. */
+/* Contiguous grid area (no gap) so tiles map 1:1 onto sprite cells. */
 .weapon-grid {
-  border-right: 1px solid #0a5c1e;
-  border-bottom: 1px solid #0a5c1e;
+  position: relative;
 }
 .weapon-tile {
+  position: relative;
   border: 1px solid transparent;
   border-radius: 4px;
   padding: 0;
@@ -292,4 +290,26 @@ body {
 .weapon-tile.selected {
   border-color: var(--accent, #ffd24a);
   box-shadow: 0 0 0 1px var(--accent, #ffd24a);
+}
+/* Unavailable this round: grey it out and block interaction (matches WA). */
+.weapon-tile.unavailable {
+  filter: grayscale(1) brightness(0.45);
+  cursor: default;
+}
+.weapon-tile:disabled:active {
+  transform: none;
+}
+/* Ammo count / deferred-round badge, bottom-right of the tile. */
+.weapon-badge {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  padding: 0 2px;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+  pointer-events: none;
 }

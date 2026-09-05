@@ -58,6 +58,15 @@ export interface TeamInfo {
   worms: WormInfo[];
 }
 
+// Per-weapon availability for the turn team (from WA's ammo table).
+// ammo: -1 = infinite, 0 = unavailable this round, >0 = finite count.
+// delay: rounds until it becomes available (0 = now / not deferred).
+export interface WeaponAmmo {
+  id: number;
+  ammo: number;
+  delay: number;
+}
+
 export interface GameSnapshot {
   game_id: number;
   round_active: boolean;
@@ -67,6 +76,7 @@ export interface GameSnapshot {
   turn_team: number | null;
   turn_time_ms: number | null;
   teams: TeamInfo[];
+  weapons: WeaponAmmo[];
 }
 
 // team number (as string, since JSON object keys are strings) -> email

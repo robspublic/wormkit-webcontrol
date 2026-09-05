@@ -26,6 +26,9 @@ void publishSnapshot(const Protocol::GameSnapshot& snap) {
     g_snapshot = snap;
 }
 
+// Fill snap.weapons with the turn team's per-weapon ammo/delay (defined below).
+void readTurnTeamWeapons(Protocol::GameSnapshot& snap);
+
 // Walk the task tree from the turn-game task and collect teams + worms into a
 // GameSnapshot. Read-only: never mutates game memory. Returns an empty
 // (round_active=false) snapshot when not in a game.
@@ -87,6 +90,9 @@ Protocol::GameSnapshot buildSnapshot() {
 
         snap.teams.push_back(std::move(ts));
     });
+
+    // Attach the turn team's weapon availability (ammo/delay) for the palette.
+    readTurnTeamWeapons(snap);
 
     return snap;
 }
@@ -165,12 +171,7 @@ CTaskWorm* findActiveTurnWorm() {
 // we don't run). Zeroing 0x36C and leaving it caused the game to dereference a
 // null entry -> crash (read of [null+0x30]). So compute the entry pointer here,
 // exactly like the reference: entry = *(gameGlobal+0x510) + 464 * index.
-void dumpAmmoTable();  // TEMP (Tier 3 RE): defined below, called here.
 void applyWeapon(int weaponId) {
-    // TEMP diagnostic: dump the per-team ammo table on each selection so we can
-    // confirm the ammo/delay layout. Remove once confirmed and wired in.
-    dumpAmmoTable();
-
     // Guard the index to the known weapon-table range so we never point past
     // the table (an out-of-range entry would fault when the game reads it).
     if (weaponId < 1 || weaponId > 70) return;
@@ -202,23 +203,22 @@ void applyWeapon(int weaponId) {
 // ReleaseWeapon exactly once on the press / release edge. Game-thread only.
 bool g_wasFiring = false;
 
-// ---- TEMPORARY diagnostic: per-team ammo-table dump (Tier 3 RE) ------------
+// ---- Per-team weapon availability (WA ammo table) --------------------------
 // The shared weapon table (*(gameGlobal+0x510)) holds only static weapon defs,
-// NOT per-game ammo/enabled. The real per-team ammo lives in a separate flat
-// short[] "ammo table" (per reference/wkTerrainSync Missions.cpp):
+// NOT per-game ammo. The real per-team ammo lives in a separate flat short[]
+// "ammo table" (per reference/wkTerrainSync Missions.cpp), confirmed in-game:
 //   ammo  = *(short*)(addrAmmoTable + 2*(weapon + 143*team))
 //   delay = *(short*)(addrAmmoTable + 2*(weapon + 143*team) + 142)
-// ammo -1 = infinite, 0 = disabled/hidden, >0 = finite; delay = deferred rounds.
-// This dump prints ammo+delay for every weapon id (turn team) so we can confirm
-// the layout (esp. the odd +142 delay offset) against known in-game values.
-// Remove once confirmed and wired in.
+// ammo -1 = infinite, 0 = unavailable this round, >0 = finite count.
+// delay = rounds until it becomes available (0 = now / n/a).
 
 // Resolved ammo-table base (scanned once). 0 = not yet / scan failed.
 DWORD g_ammoTable = 0;
 bool  g_ammoScanTried = false;
 
 // Resolve addrAmmoTable via the ReadAmmoFromWAM scan (same as wkTerrainSync).
-// Wrapped so a failed scan just disables the dump instead of aborting.
+// Wrapped so a failed scan just disables weapon availability rather than
+// aborting (availability is a nice-to-have; core control must not depend on it).
 DWORD resolveAmmoTable() {
     if (g_ammoScanTried) return g_ammoTable;
     g_ammoScanTried = true;
@@ -229,32 +229,27 @@ DWORD resolveAmmoTable() {
             "??????xxxxxxxxxxxxxx????xx????xxxxxxxx????xxxx");
         g_ammoTable = *(DWORD*)(addrReadAmmoFromWAM + 0x26);
     } catch (...) {
-        Log::warn("ammo-table scan (ReadAmmoFromWAM) failed; dump disabled");
+        Log::warn("ammo-table scan (ReadAmmoFromWAM) failed; weapons unavailable");
         g_ammoTable = 0;
     }
     return g_ammoTable;
 }
 
-// Dump ammo + delay for all weapon ids of the current turn team. Compact: one
-// line per weapon so the dev console (limited scrollback) keeps the whole set.
-void dumpAmmoTable() {
+// Fill snap.weapons with ammo+delay for every weapon id (1..70) of the current
+// turn team. No-op if the ammo table isn't resolvable or there's no turn team.
+void readTurnTeamWeapons(Protocol::GameSnapshot& snap) {
+    if (!snap.turn_team) return;
     DWORD ammoTable = resolveAmmoTable();
     if (ammoTable == 0) return;
 
-    const int team = CTaskTurnGame::currentTurnTeam();
-    if (team < 0) return;
-
-    Log::info("==== ammo-table dump (base=" + std::to_string(ammoTable) +
-              " team=" + std::to_string(team) + ") ====");
-    // Weapon ids 1..70 cover the whole panel (Bazooka..CrateShower).
+    const int team = *snap.turn_team;
     for (int w = 1; w <= 70; ++w) {
-        short ammo  = *(short*)(ammoTable + 2 * (w + 143 * team));
-        short delay = *(short*)(ammoTable + 2 * (w + 143 * team) + 142);
-        Log::info("  w=" + std::to_string(w) +
-                  " ammo=" + std::to_string((int)ammo) +
-                  " delay=" + std::to_string((int)delay));
+        Protocol::WeaponAmmo wa;
+        wa.id = w;
+        wa.ammo  = (int)*(short*)(ammoTable + 2 * (w + 143 * team));
+        wa.delay = (int)*(short*)(ammoTable + 2 * (w + 143 * team) + 142);
+        snap.weapons.push_back(wa);
     }
-    Log::info("==== end ammo-table dump ====");
 }
 
 // Translate the current held-input state into per-frame WA input messages.

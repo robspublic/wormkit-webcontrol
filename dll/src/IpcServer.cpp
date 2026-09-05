@@ -96,6 +96,17 @@ namespace {
             teams.push_back(std::move(jt));
         }
         j["teams"] = std::move(teams);
+
+        // Per-weapon availability for the turn team (may be empty).
+        json weapons = json::array();
+        for (const auto& w : s.weapons) {
+            weapons.push_back({
+                {"id", w.id},
+                {"ammo", w.ammo},
+                {"delay", w.delay},
+            });
+        }
+        j["weapons"] = std::move(weapons);
         return j.dump() + "\n";
     }
 

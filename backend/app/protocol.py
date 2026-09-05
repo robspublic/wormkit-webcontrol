@@ -81,6 +81,18 @@ class TeamInfo(BaseModel):
     worms: list[WormInfo] = Field(default_factory=list)
 
 
+class WeaponAmmo(BaseModel):
+    """Per-weapon availability for the current turn team (from WA's ammo table).
+
+    ammo: -1 = infinite, 0 = unavailable this round, >0 = finite count.
+    delay: rounds until the weapon becomes available (0 = now / not deferred).
+    """
+
+    id: int
+    ammo: int = 0
+    delay: int = 0
+
+
 class GameSnapshot(BaseModel):
     """Full read-only view of game state for the monitor."""
 
@@ -92,6 +104,8 @@ class GameSnapshot(BaseModel):
     turn_team: int | None = None
     turn_time_ms: int | None = None
     teams: list[TeamInfo] = Field(default_factory=list)
+    # Weapon availability for the turn team (empty if unknown / no turn).
+    weapons: list[WeaponAmmo] = Field(default_factory=list)
 
     @classmethod
     def from_wire(cls, line: bytes) -> "GameSnapshot":
