@@ -177,18 +177,19 @@ void applyWeapon(int weaponId) {
     CTaskWorm* worm = findActiveTurnWorm();
     if (worm == nullptr) return;
 
+    // Write the fields so the weapon DATA is always correct and crash-safe,
+    // even if the input dispatch below no-ops. (This alone selects the weapon,
+    // but the game doesn't refresh the held sprite/panel until the worm next
+    // re-evaluates its state -- e.g. after walking.)
     worm->selected_weapon_unknown170 = weaponId;
     worm->selected_weapon_entry_ptr36C = (int)(weaponTable + 464u * (DWORD)weaponId);
 
-    // The field write alone updates the data but the game doesn't refresh the
-    // held-weapon sprite / panel until the worm re-evaluates its state (which
-    // is why the change only showed after moving). Notify the worm via its own
-    // HandleMessage(SelectWeapon) so the game runs its weapon-changed refresh.
-    unsigned char buff[1024];
-    memset(buff, 0, sizeof(buff));
-    *(DWORD*)buff = (DWORD)weaponId;
-    worm->vtable8_HandleMessage(worm, Constants::TaskMessage_SelectWeapon,
-                                sizeof(buff), buff);
+    // Then route a SelectWeapon input through the SAME turn-game path that
+    // movement/aim/fire use (proven to refresh visuals), so the change is
+    // applied through the game's normal input handling rather than only poked
+    // into memory. sendInput builds the reference's 1024-byte zeroed buffer;
+    // carry the weapon id as the leading DWORD.
+    sendInput(Constants::TaskMessage_SelectWeapon, weaponId);
 }
 
 // Was the fire button held on the previous frame? Used to emit FireWeapon /
