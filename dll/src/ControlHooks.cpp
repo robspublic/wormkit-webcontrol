@@ -275,16 +275,23 @@ void dumpDelayDiag() {
     };
     Log::info("==== delay-diag team=" + std::to_string(team) + " ====");
     Log::info("  HomingMissile " + ad(2));
-    Log::info("  HomingPigeon  " + ad(4));
-    Log::info("  HolyGrenade   " + ad(43));
-    // Candidate round/frame counters.
-    if (gg) {
-        Log::info("  gg+0x5CC(frame?) = " + std::to_string((int)*(DWORD*)(gg + 0x5CC)));
-    }
-    if (tg) {
-        Log::info("  tg+0x184(roundTimer?) = " +
-                  std::to_string((int)*(DWORD*)(tg + 0x184)));
-    }
+    // Hunt for the ROUND counter: dump turn-game and gameGlobal DWORDs, but only
+    // those holding a small plausible round number (0..99), so the round counter
+    // (which should read 1 on turn 1 and 2 on the next same-team turn) stands
+    // out. Compare the two captures for a field that incremented by exactly 1.
+    auto dumpSmall = [&](const char* what, DWORD base, int lo, int hi) {
+        if (!base) return;
+        for (int off = lo; off <= hi; off += 4) {
+            int v = (int)*(DWORD*)(base + (DWORD)off);
+            if (v >= 0 && v <= 99) {
+                Log::info(std::string("  ") + what + "+0x" +
+                          std::to_string(off) + " = " + std::to_string(v));
+            }
+        }
+    };
+    // Turn-game: scan 0x30..0x2E0 (its mapped range). gameGlobal: a modest band.
+    dumpSmall("tg", tg, 0x30, 0x2E0);
+    dumpSmall("gg", gg, 0x7200, 0x7300);  // near the machine-id / turn area
     Log::info("==== end delay-diag ====");
 }
 
