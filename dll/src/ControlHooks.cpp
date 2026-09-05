@@ -179,6 +179,16 @@ void applyWeapon(int weaponId) {
 
     worm->selected_weapon_unknown170 = weaponId;
     worm->selected_weapon_entry_ptr36C = (int)(weaponTable + 464u * (DWORD)weaponId);
+
+    // The field write alone updates the data but the game doesn't refresh the
+    // held-weapon sprite / panel until the worm re-evaluates its state (which
+    // is why the change only showed after moving). Notify the worm via its own
+    // HandleMessage(SelectWeapon) so the game runs its weapon-changed refresh.
+    unsigned char buff[1024];
+    memset(buff, 0, sizeof(buff));
+    *(DWORD*)buff = (DWORD)weaponId;
+    worm->vtable8_HandleMessage(worm, Constants::TaskMessage_SelectWeapon,
+                                sizeof(buff), buff);
 }
 
 // Was the fire button held on the previous frame? Used to emit FireWeapon /
