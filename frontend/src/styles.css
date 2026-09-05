@@ -291,9 +291,17 @@ body {
   border-color: var(--accent, #ffd24a);
   box-shadow: 0 0 0 1px var(--accent, #ffd24a);
 }
-/* Unavailable this round: grey it out and block interaction (matches WA). */
+/* Deferred this round (has ammo but not yet available): grey it out and block
+   interaction (matches WA). */
 .weapon-tile.unavailable {
   filter: grayscale(1) brightness(0.45);
+  cursor: default;
+}
+/* Not in this game (ammo 0): fully hidden. An opaque cell masks the sprite that
+   shows through the grid background. */
+.weapon-tile.hidden {
+  background: #000;
+  border-color: transparent;
   cursor: default;
 }
 .weapon-tile:disabled:active {

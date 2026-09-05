@@ -292,19 +292,39 @@ function WeaponPalette({
           // N is locked until round > N (e.g. Homing Missile delay=1 unlocks on
           // round 2). It's usable once it has ammo AND the delay has elapsed.
           const deferred = delay > 0 && round <= delay;
-          const available = !hasData || (ammo !== 0 && !deferred);
+          // ammo == 0 means the weapon isn't in this game at all -> hide it.
+          const hidden = hasData && ammo === 0;
+          const available = !hasData || (ammo > 0 && !deferred);
+
+          // Exact source position of this tile within the sprite (in px),
+          // scaled up: left/top of the 28px tile = origin + index*pitch.
+          const left = origin + slot.col * pitch;
+          const top = origin + slot.row * pitch;
+
+          // Hidden weapons render as an opaque masking cell (no icon, no badge,
+          // no interaction) so the sprite behind the grid doesn't show through.
+          if (hidden) {
+            return (
+              <div
+                key={`${slot.row}-${slot.col}`}
+                className="weapon-tile hidden"
+                aria-hidden="true"
+                style={{ position: "absolute", left, top, width: tile, height: tile }}
+              />
+            );
+          }
 
           // Badge:
-          //  - still-deferred: "(<rounds remaining>)" and, if it also has ammo,
-          //    " x<ammo>"  e.g. "(5) x1", or just "(2)" when ammo is 0.
-          //  - available finite: the count.  - infinite: nothing.
+          //  - deferred (ammo > 0): "(<rounds remaining>) x<ammo>"  e.g. "(5) x1"
+          //  - available finite:    "x<ammo>"
+          //  - infinite / no data:  nothing
           let badge = "";
-          if (hasData) {
+          if (hasData && ammo > 0) {
             if (deferred) {
               const remaining = delay - round + 1; // rounds until round > delay
-              badge = `(${remaining})` + (ammo > 0 ? ` x${ammo}` : "");
-            } else if (ammo > 0) {
-              badge = String(ammo);
+              badge = `(${remaining}) x${ammo}`;
+            } else {
+              badge = `x${ammo}`;
             }
           }
 
@@ -312,11 +332,6 @@ function WeaponPalette({
             "weapon-tile" +
             (selected ? " selected" : "") +
             (available ? "" : " unavailable");
-
-          // Exact source position of this tile within the sprite (in px),
-          // scaled up: left/top of the 28px tile = origin + index*pitch.
-          const left = origin + slot.col * pitch;
-          const top = origin + slot.row * pitch;
 
           return (
             <button
