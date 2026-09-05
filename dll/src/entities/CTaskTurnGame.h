@@ -11,10 +11,7 @@ class CTaskTurnGame : public CTask {
 public:
     char _pad30[0x7C - 0x30];
     int  number_of_teams_dword7C;         // 0x7C
-    char _pad80[0x130 - 0x80];
-    int  round_number_dword130;           // 0x130 (1-based round counter;
-                                          //        increments each full cycle)
-    char _pad134[0x140 - 0x134];
+    char _pad80[0x140 - 0x80];
     int  its_before_round_start_dword140; // 0x140 (worms still being placed)
     char _pad144[0x150 - 0x144];
     int  turn_paused_dword150;            // 0x150 (named; not confirmed-read)

@@ -1,9 +1,7 @@
 #include "ControlHooks.h"
 
-#include <cstdio>
 #include <cstring>
 #include <mutex>
-#include <string>
 
 #include "ControlState.h"
 #include "W2App.h"
@@ -49,7 +47,9 @@ Protocol::GameSnapshot buildSnapshot() {
         return snap;
     }
     snap.num_teams = tg->number_of_teams_dword7C;
-    snap.round = tg->round_number_dword130;
+    // Round counter lives in GameGlobal (turn-game 0x130 was a per-team/turn
+    // counter that wrapped). Confirmed 1..7 across genuine captures.
+    snap.round = (int)*(DWORD*)(gg + 0x7238);
     snap.before_round_start = tg->its_before_round_start_dword140 != 0;
     snap.turn_time_ms = tg->turn_timer1_unknown188;
 
@@ -173,10 +173,7 @@ CTaskWorm* findActiveTurnWorm() {
 // we don't run). Zeroing 0x36C and leaving it caused the game to dereference a
 // null entry -> crash (read of [null+0x30]). So compute the entry pointer here,
 // exactly like the reference: entry = *(gameGlobal+0x510) + 464 * index.
-void dumpRoundHunt();  // TEMP (round-counter hunt): defined below.
 void applyWeapon(int weaponId) {
-    dumpRoundHunt();  // TEMP: append a full scan to wkwc_dump.txt per select.
-
     // Guard the index to the known weapon-table range so we never point past
     // the table (an out-of-range entry would fault when the game reads it).
     if (weaponId < 1 || weaponId > 70) return;
@@ -255,60 +252,6 @@ void readTurnTeamWeapons(Protocol::GameSnapshot& snap) {
         wa.delay = (int)*(short*)(ammoTable + 2 * (w + 143 * team) + 142);
         snap.weapons.push_back(wa);
     }
-}
-
-// ---- TEMPORARY diagnostic: round-counter hunt v2 (writes to a FILE) --------
-// Homing Missile (delay=1) unlocked correctly on round 2, but longer delays
-// (e.g. Air Strike) didn't unlock, and my tg+0x130 candidate stalled at 2. The
-// two-point analysis couldn't distinguish counters that both read 1->2. This
-// appends a full scan to wkwc_dump.txt in the WA dir (next to ERRORLOG.TXT) so
-// the dev console can't trim it -- capture on rounds 1..N and find the field
-// that tracks the round monotonically. The frame counter is logged first as a
-// discriminator so duplicate/stale captures are obvious.
-void dumpRoundHunt() {
-    DWORD ammoTable = resolveAmmoTable();
-    const int team = CTaskTurnGame::currentTurnTeam();
-    if (ammoTable == 0 || team < 0) return;
-    DWORD gg = W2App::getAddrGameGlobal();
-    DWORD tg = W2App::getAddrTurnGame();
-    if (!gg || !tg) return;
-
-    // Absolute Wine path: the Unix root '/' maps to the Z: drive by default, so
-    // /home/rfisher/... is Z:\home\rfisher\... Writing into the repo tmp/ dir
-    // lets us read the dump directly on the host.
-    FILE* f = std::fopen(
-        "Z:\\home\\rfisher\\git\\wormkit-webcontrol\\tmp\\wkwc_dump.txt", "a");
-    if (!f) return;
-
-    std::fprintf(f, "==== round-hunt team=%d frame(gg+0x5CC)=%d ====\n",
-                 team, (int)*(DWORD*)(gg + 0x5CC));
-    // A few deferred weapons for cross-checking against the in-game panel.
-    auto wline = [&](const char* name, int w) {
-        short a = *(short*)(ammoTable + 2 * (w + 143 * team));
-        short d = *(short*)(ammoTable + 2 * (w + 143 * team) + 142);
-        std::fprintf(f, "  %-14s w=%d ammo=%d delay=%d\n", name, w, (int)a, (int)d);
-    };
-    wline("HomingMissile", 2);
-    wline("HomingPigeon", 4);
-    wline("AirStrike", 27);
-    wline("NapalmStrike", 28);
-    wline("HolyGrenade", 43);
-
-    // Dump turn-game (0x30..0x2E0) + gameGlobal bands as small ints (0..999) so
-    // the monotonic round counter stands out. Wider value range than before in
-    // case the counter climbs past 99, and a wider gameGlobal band.
-    auto scan = [&](const char* what, DWORD base, int lo, int hi) {
-        for (int off = lo; off <= hi; off += 4) {
-            int v = (int)*(DWORD*)(base + (DWORD)off);
-            if (v >= 0 && v <= 999)
-                std::fprintf(f, "  %s+0x%x = %d\n", what, off, v);
-        }
-    };
-    scan("tg", tg, 0x30, 0x2E0);
-    scan("gg", gg, 0x5C0, 0x600);   // near the frame counter (gg+0x5CC)
-    scan("gg", gg, 0x7200, 0x7300); // near machine-id / turn area
-    std::fprintf(f, "==== end round-hunt ====\n");
-    std::fclose(f);
 }
 
 // Translate the current held-input state into per-frame WA input messages.
